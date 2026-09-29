@@ -595,8 +595,33 @@ export function generate(P) {
   return combine(front, back, W, H, D, P);
 }
 
+function endSkin(front, W, H, D, P, side) {
+  const EP = { ...P, reliefMax: Math.max(0, P.endRelief ?? 2), tieChance: P.tieChance * 0.7, splitChance: 0.55,
+    minSlab: Math.max(3, Math.floor(D / 4)), ledgeChance: 0.2, jointDepth: Math.min(1, P.jointDepth), cracks: Math.ceil(P.cracks / 2) };
+  const s = new Skin(D, H, (P.seed * 31 + 7 + side * 1013) >>> 0, EP);
+  // tier breaks follow the front's slabs at this end, so horizontal joints wrap around the corner
+  const fx = side ? W - 1 : 0, breaks = [0];
+  for (let y = 1; y < H; y++) {
+    const a = front.mono[fx * H + y], b = front.mono[fx * H + y - 1];
+    if (a !== b && a >= 0 && y - breaks[breaks.length - 1] >= 4) breaks.push(y);
+  }
+  if (H - breaks[breaks.length - 1] < 3) breaks.pop();
+  breaks.push(H);
+  for (let t = 0; t < breaks.length - 1; t++) {
+    const y0 = breaks[t], y1 = breaks[t + 1];
+    const n = D >= 2 * EP.minSlab + 1 && s.R.f() < EP.splitChance ? 2 : 1;
+    const ws = splitWidth(D, n, s.R, EP.minSlab);
+    let z = 0; const fs = [];
+    ws.forEach(w => { const f = s.R.int(0, EP.reliefMax); fs.push(f); s.block(z, z + w, y0, y1, f, { ledge: s.R.f() < EP.ledgeChance }); z += w + 1; });
+    z = 0;
+    ws.forEach((w, k) => { z += w; if (k < ws.length - 1) { s.groove(z, y0, y1, Math.max(fs[k], fs[k + 1]) + 1); z++; } });
+  }
+  s.weather();
+  return s;
+}
+
 function combine(front, back, W, H, D, P) {
-  const R = front.R, mid = D >> 1, core = Math.max(2, P.minCore);
+  const mid = D >> 1, core = Math.max(2, P.minCore);
   const has = new Uint8Array(W * H), zf = new Int16Array(W * H), zb = new Int16Array(W * H);
   for (let x = 0; x < W; x++) for (let y = 0; y < H; y++) {
     const i = x * H + y, ff = front.F[i], fb = back.F[(W - 1 - x) * H + y];
@@ -605,20 +630,16 @@ function combine(front, back, W, H, D, P) {
     b = Math.max(0, Math.min(b, a - (core - 1)));
     zf[i] = Math.max(a, b); zb[i] = b;
   }
-  const carved = new Set();
-  const ck = (x, y, z) => (x * H + y) * D + z;
-  if (P.endDetail) for (const x of [0, W - 1]) {
-    const xb = W - 1 - x;
-    for (let y = 1; y < H; y++) {
-      const i = x * H + y; if (!has[i]) continue;
-      const fm = front.mono[i], fm0 = front.mono[i - 1], bm = back.mono[xb * H + y], bm0 = back.mono[xb * H + y - 1];
-      const joint = (fm !== fm0 && fm >= 0) || (bm !== bm0 && bm >= 0);
-      for (let z = zb[i] + 1; z < zf[i]; z++) {
-        if (joint || (z === mid && y > 2) || R.f() < P.endChips) carved.add(ck(x, y, z));
-      }
-    }
-  }
-  const solid = (x, y, z) => x >= 0 && x < W && y >= 0 && y < H && has[x * H + y] && z >= zb[x * H + y] && z <= zf[x * H + y] && !carved.has(ck(x, y, z));
+  // each end face gets its own designed skin (width = thickness), with joints aligned to the front's tiers
+  const ends = [endSkin(front, W, H, D, P, 0), endSkin(front, W, H, D, P, 1)];
+  const relief = P.endDetail ? Math.max(0, P.endRelief ?? 2) : 0;
+  const eF = (side, z, y) => {
+    if (!relief) return 0;
+    const v = ends[side].F[(side ? D - 1 - z : z) * H + y];
+    return v >= NONE ? 0 : Math.min(v, relief);
+  };
+  const solid = (x, y, z) => x >= 0 && x < W && y >= 0 && y < H && z >= 0 && z < D && has[x * H + y]
+    && z >= zb[x * H + y] && z <= zf[x * H + y] && x >= eF(0, z, y) && x <= W - 1 - eF(1, z, y);
   const keys = ['air'], idx = new Map([['air', 0]]);
   const kid = b => { let v = idx.get(b); if (v === undefined) { v = keys.length; keys.push(b); idx.set(b, v); } return v; };
   const data = new Uint16Array(W * H * D);
@@ -627,9 +648,14 @@ function combine(front, back, W, H, D, P) {
   for (let x = 0; x < W; x++) for (let y = 0; y < H; y++) {
     const i = x * H + y; if (!has[i]) continue;
     for (let z = zb[i]; z <= zf[i]; z++) {
-      if (carved.has(ck(x, y, z))) continue;
+      if (!solid(x, y, z)) continue;
+      const oF = !solid(x, y, z + 1), oB = !solid(x, y, z - 1), oL = !solid(x - 1, y, z), oR = !solid(x + 1, y, z);
       let b;
-      if (solid(x + 1, y, z) && solid(x - 1, y, z) && solid(x, y + 1, z) && solid(x, y - 1, z) && solid(x, y, z + 1) && solid(x, y, z - 1)) b = pal.interior;
+      if (!(oF || oB || oL || oR) && solid(x, y + 1, z) && solid(x, y - 1, z)) b = pal.interior;
+      else if (!oF && !oB && (oL || oR)) {                     // end face
+        const side = oL && (!oR || x < W / 2) ? 0 : 1;
+        b = ends[side].faceBlock(side ? D - 1 - z : z, y, true);
+      }
       else if (z >= mid) b = front.faceBlock(x, y, z === zf[i]);
       else b = back.faceBlock(W - 1 - x, y, z === zb[i]);
       data[at(x, y, z)] = kid(b);
@@ -663,7 +689,7 @@ export const DEFAULT_PALETTE = {
 };
 export const DEFAULTS = {
   name: 'my_wall', layout: 'stacked', seed: 1234, width: 20, heightMin: 70, heightMax: 74, thickness: 24,
-  doubleSided: true, backLayout: 'auto', backSeedOffset: 9000, backFeatures: 'same', minCore: 4, endDetail: true, endChips: 0.02,
+  doubleSided: true, backLayout: 'auto', backSeedOffset: 9000, backFeatures: 'same', minCore: 4, endDetail: true, endRelief: 2,
   reliefMax: 4, tierMin: 8, tierMax: 14, splitChance: 0.6, minSlab: 5, ledgeChance: 0.5, jointDepth: 1, grooveDepth: 2, formlineChance: 0.5,
   fins: true, finHeightMin: 15, finHeightMax: 22, finWidth: 2, finGapMin: 3, finGapMax: 5, plinthHeight: 2, plinthDepth: 2,
   towerCount: 2, towerGap: 2, towerGapDepth: 8, cubeWidth: 12, cubeHeight: 14, overhang: 5,

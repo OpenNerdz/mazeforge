@@ -35,8 +35,8 @@ const SCHEMA = [
     { k: 'backSeedOffset', type: 'range', label: 'Back variation', min: 1, max: 9999, step: 1, when: P => P.doubleSided, help: 'Changes the back without touching the front.' },
     { k: 'backFeatures', type: 'select', label: 'Back features', options: { same: 'Same as front', fewer: 'Fewer', none: 'None' }, when: P => P.doubleSided },
     { k: 'minCore', type: 'range', label: 'Min core', min: 2, max: 12, step: 1, unit: 'blocks', help: 'Solid thickness kept between front and back relief.' },
-    { k: 'endDetail', type: 'toggle', label: 'End-face detail', help: 'Joints, centre seam and chips on the two ends.' },
-    { k: 'endChips', type: 'range', label: 'End chips', min: 0, max: 0.15, step: 0.005, when: P => P.endDetail },
+    { k: 'endDetail', type: 'toggle', label: 'End-face detail', help: 'Give the two ends their own slab design (joints line up with the front). Off = flat but weathered.' },
+    { k: 'endRelief', type: 'range', label: 'End relief', min: 0, max: 5, step: 1, unit: 'blocks', when: P => P.endDetail, help: 'How far the end-face slabs step in and out.' },
   ]},
   { id: 'massing', title: 'Massing & relief', ico: '▤', items: [
     { k: 'reliefMax', type: 'range', label: 'Relief depth', min: 0, max: 10, step: 1, unit: 'blocks', help: 'How far slabs step in and out.' },
