@@ -1,0 +1,95 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Maze Structure Studio</title>
+<link rel="icon" href="icon.png">
+<link rel="stylesheet" href="styles.css">
+<script type="importmap">
+{ "imports": { "three": "./lib/three.module.min.js", "three/addons/controls/OrbitControls.js": "./lib/OrbitControls.js" } }
+</script>
+</head>
+<body>
+<header class="topbar">
+  <div class="brand"><img src="icon.png" alt=""><div><b>Maze Structure Studio</b><span>Procedural wall designer</span></div></div>
+  <div class="tb-group">
+    <input id="name" class="name-input" spellcheck="false" title="File name used when exporting">
+    <select id="preset" title="Load a preset"></select>
+    <button id="savePreset" class="ghost" title="Save current settings as a preset">Save preset</button>
+  </div>
+  <div class="tb-group">
+    <button id="undo" class="icon" title="Undo (Ctrl+Z)">↶</button>
+    <button id="redo" class="icon" title="Redo (Ctrl+Shift+Z)">↷</button>
+    <button id="reseed" class="ghost" title="New random seed (R)">🎲 New seed</button>
+    <button id="remix" class="ghost" title="Randomise layout and features (M)">✦ Remix</button>
+  </div>
+  <div class="tb-group right">
+    <button id="open" class="ghost" title="Open a .schem file to preview">Open .schem</button>
+    <button id="batch" class="ghost" title="Export many variants at once">Batch…</button>
+    <button id="export" class="ghost" title="Download .schem (E)">Download</button>
+    <button id="save" class="primary" title="Save straight into your Minecraft schematics folders (Ctrl+S)">Save to Minecraft</button>
+  </div>
+</header>
+
+<div class="layout">
+  <aside class="panel">
+    <div class="search"><input id="filter" placeholder="Search controls…" spellcheck="false"></div>
+    <div id="controls"></div>
+  </aside>
+  <main class="stage">
+    <canvas id="view"></canvas>
+    <div class="viewbar">
+      <div class="seg" id="views">
+        <button data-v="iso" class="on">3D</button><button data-v="front">Front</button><button data-v="back">Back</button>
+        <button data-v="left">Left</button><button data-v="right">Right</button><button data-v="top">Top</button>
+      </div>
+      <div class="seg">
+        <button id="tShadow" class="on" title="Shadows">☀ Shadows</button>
+        <button id="tGrid" title="Ground grid">▦ Grid</button>
+        <button id="tSpin" title="Auto-rotate">⟳ Spin</button>
+        <button id="shot" title="Save a screenshot (P)">⎙ Shot</button>
+      </div>
+    </div>
+    <div class="sunbar">
+      <label>Sun <input type="range" id="sunAz" min="0" max="360" value="320"></label>
+      <label>Height <input type="range" id="sunEl" min="8" max="85" value="40"></label>
+      <label>Tile ×<input type="range" id="tiles" min="1" max="6" value="1"><output id="tilesOut">1</output></label>
+    </div>
+    <div class="stats" id="stats"></div>
+    <div class="busy" id="busy">Generating…</div>
+    <div class="banner hidden" id="banner"><span id="bannerText"></span><button id="bannerClose" class="ghost">Back to designer</button></div>
+  </main>
+</div>
+
+<dialog id="dlgSave">
+  <form method="dialog">
+    <h3>Save to Minecraft</h3>
+    <p class="muted">WorldEdit schematics folders found on this PC:</p>
+    <div id="targets" class="targets"></div>
+    <label class="row">Subfolder <input id="subfolder" value="studio" spellcheck="false"></label>
+    <label class="row check"><input type="checkbox" id="overwrite"> Overwrite files with the same name</label>
+    <p class="muted small">In-game: <code id="loadHint"></code> then <code>//paste -a</code></p>
+    <div class="actions"><button value="cancel" class="ghost">Cancel</button><button id="doSave" value="ok" class="primary">Save</button></div>
+  </form>
+</dialog>
+
+<dialog id="dlgBatch">
+  <form method="dialog">
+    <h3>Batch export</h3>
+    <p class="muted">Generate several variants of the current design, each with its own seed.</p>
+    <label class="row">Variants <input type="number" id="bCount" min="1" max="100" value="6"></label>
+    <label class="row">Start seed <input type="number" id="bSeed"></label>
+    <label class="row">Name pattern <input id="bPattern" value="{name}_{n}" spellcheck="false"></label>
+    <label class="row check"><input type="checkbox" id="bNumbers"> Number them (lettering = 1, 2, 3…)</label>
+    <p class="muted small">Saves to the folders selected in “Save to Minecraft”.</p>
+    <div class="progress"><div id="bBar"></div></div>
+    <div class="actions"><button value="cancel" class="ghost">Close</button><button id="doBatch" value="ok" class="primary">Export</button></div>
+  </form>
+</dialog>
+
+<input type="file" id="fileIn" accept=".schem" hidden>
+<div id="toasts"></div>
+<script type="module" src="app.js"></script>
+</body>
+</html>

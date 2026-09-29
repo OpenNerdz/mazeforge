@@ -1,0 +1,7 @@
+# personal output
+exports/
+# python / editor noise
+__pycache__/
+*.pyc
+*.tmp
+.DS_Store
