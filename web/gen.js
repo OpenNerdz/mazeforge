@@ -141,6 +141,47 @@ export class Skin {
   getF(x, y) { return this.inb(x, y) ? this.F[this.i(x, y)] : NONE; }
   setF(x, y, v) { if (this.inb(x, y)) this.F[this.i(x, y)] = Math.max(0, Math.min(v, this.MAXF)); }
   fchoice() { return this.R.int(0, Math.max(0, this.P.reliefMax)); }
+  // how many slabs a span of width w splits into: grows with width so wide walls don't turn into big flat panels
+  slabCount(w) {
+    const P = this.P, R = this.R, maxN = Math.max(1, Math.floor((w + 1) / (P.minSlab + 1)));
+    if (maxN === 1) return 1;
+    const target = w / Math.max(P.minSlab + 1, P.slabTarget ?? 11);
+    let n = Math.round(target * R.uniform(0.7, 1.3) * (0.35 + 0.9 * P.splitChance));
+    if (n < 2 && R.f() < P.splitChance) n = 2;
+    return Math.max(1, Math.min(maxN, n));
+  }
+  // surface detail on big slabs: recessed inset panels, pilaster strips or a panel grid
+  panelize(id) {
+    const P = this.P, R = this.R, m = this.monos[id];
+    const w = m.x1 - m.x0, h = m.y1 - m.y0;
+    if (w < 9 || h < 9 || R.f() >= (P.panelDetail ?? 0.55)) return;
+    const own = (x, y) => this.mono[this.i(x, y)] === id && this.F[this.i(x, y)] === m.f;
+    const kind = w >= 14 && R.f() < 0.3 ? 'pilasters' : R.pick(['inset', 'inset', 'grid']);
+    if (kind === 'inset') {
+      const fw = R.int(1, 2), y0 = m.y0 + 1 + fw, y1 = m.y1 - fw - (R.f() < 0.4 ? 1 : 0);
+      for (let x = m.x0 + fw; x < m.x1 - fw; x++) for (let y = y0; y < y1; y++) if (own(x, y)) this.F[this.i(x, y)] = m.f + 1;
+      if (R.f() < 0.35 && w >= 14) {                                   // double inset
+        for (let x = m.x0 + fw + 2; x < m.x1 - fw - 2; x++) for (let y = y0 + 2; y < y1 - 2; y++) if (this.mono[this.i(x, y)] === id) this.F[this.i(x, y)] = m.f + 2;
+      }
+    } else if (kind === 'pilasters') {
+      const sp = R.int(5, 8), pw = R.int(1, 2), off = R.int(1, 3), out = m.f >= 1;
+      for (let x = m.x0; x < m.x1; x++) {
+        const on = (x - m.x0 - off) % sp < pw && x - m.x0 >= off && m.x1 - x > 1;
+        for (let y = m.y0 + 1; y < m.y1; y++) if (own(x, y)) {
+          if (on && out) this.F[this.i(x, y)] = m.f - 1;
+          else if (!on && !out) this.F[this.i(x, y)] = m.f + 1;
+        }
+      }
+    } else {
+      // a grid of recessed lines dividing the slab into formwork panels
+      const cols = Math.max(2, Math.round(w / R.int(6, 9))), rows = Math.max(1, Math.round(h / R.int(6, 10)));
+      const cw = w / cols, rh = h / rows;
+      const edge = (v, size) => v > 0 && Math.floor(v / size) !== Math.floor((v - 1) / size);
+      for (let x = m.x0 + 1; x < m.x1 - 1; x++) for (let y = m.y0 + 1; y < m.y1; y++) {
+        if ((edge(x - m.x0, cw) || edge(y - m.y0, rh)) && own(x, y)) { this.F[this.i(x, y)] = m.f + 1; this.dark[this.i(x, y)] += 0.05; }
+      }
+    }
+  }
 
   block(x0, x1, y0, y1, f, o = {}) {
     const R = this.R, P = this.P;
@@ -173,17 +214,19 @@ export class Skin {
     const fpick = o.fpick ?? (() => this.fchoice());
     let prevF = new Map();
     while (y < ytop) {
-      let h = Math.min(R.int(hmin, hmax), ytop - y);
+      let h = R.int(hmin, hmax);
+      if (R.f() < 0.15) h = Math.round(h * R.uniform(1.4, 1.9));        // the odd tall slab breaks the rhythm
+      h = Math.min(h, ytop - y);
       if (ytop - (y + h) < 5) h = ytop - y;
-      let n = 1;
-      if (o.split !== false && x1 - x0 >= 2 * P.minSlab + 1) { if (R.f() < P.splitChance) n++; if (R.f() < P.splitChance * 0.45) n++; }
+      const n = o.split === false ? 1 : this.slabCount(x1 - x0);
       const ws = splitWidth(x1 - x0, n, R, P.minSlab);
       let xx = x0; const fs = [];
       for (const w of ws) {
         let f = fpick();
         if (prevF.get(xx + (w >> 1)) === f) f = Math.max(0, Math.min(P.reliefMax, f + R.pick([-2, 2])));
         fs.push(f);
-        this.block(xx, xx + w, y, y + h, f, { ledge: R.f() < P.ledgeChance });
+        const id = this.block(xx, xx + w, y, y + h, f, { ledge: R.f() < P.ledgeChance });
+        if (id >= 0) this.panelize(id);
         xx += w + 1;
       }
       xx = x0; const nf = new Map();
@@ -191,17 +234,56 @@ export class Skin {
       prevF = nf; y += h;
     }
   }
+  // Wide walls are built as independent bays (like separate blocks set side by side): each bay has its own
+  // depth offset, its own tier heights (so joints never run the whole width) and its own skyline.
+  massing(x0, x1, y, crownY, o = {}) {
+    const P = this.P, R = this.R, bw = Math.max(8, P.bayWidth ?? 20);
+    let ranges = [[x0, x1]];
+    if (this.segments) for (const cut of this.segments) ranges = ranges.flatMap(([a, b]) => cut > a && cut < b ? [[a, cut], [cut, b]] : [[a, b]]);
+    const bays = [], gaps = [];
+    for (const [a, b] of ranges) {
+      const wid = b - a;
+      if (wid < bw * 1.4) { bays.push([a, b]); continue; }
+      const n = Math.max(2, Math.round(wid / (bw * R.uniform(0.75, 1.25))));
+      const ws = splitWidth(wid, n, R, Math.max(P.minSlab + 2, Math.round(bw * 0.45)));
+      let xx = a;
+      ws.forEach((w, i) => { bays.push([xx, xx + w]); xx += w; if (i < ws.length - 1) { gaps.push(xx); xx++; } });
+    }
+    const multi = bays.length > 1, shifts = [];
+    for (const [a, b] of bays) {
+      const shift = multi ? R.int(0, Math.max(0, P.bayRelief ?? 3)) : 0; shifts.push(shift);
+      const base = o.fpick || (() => this.fchoice());
+      const fpick = () => Math.min(this.MAXF - 4, base() + shift);
+      const cy = Math.max(y, crownY + (multi ? R.int(-8, 6) : 0));
+      this.stack(a, b, y, cy, { fpick });
+      this.crown(a, b, cy, { fshift: shift });
+    }
+    // deep vertical joints between bays, up to the lower neighbour's top
+    const topOf = x => { for (let yy = this.H - 1; yy >= 0; yy--) if (this.getF(x, yy) < NONE) return yy + 1; return 0; };
+    for (const g of gaps) {
+      const t = Math.min(topOf(g - 1), topOf(g + 1));
+      let deepest = 0; for (let yy = y; yy < t; yy++) deepest = Math.max(deepest, this.getF(g - 1, yy) < NONE ? this.getF(g - 1, yy) : 0, this.getF(g + 1, yy) < NONE ? this.getF(g + 1, yy) : 0);
+      this.groove(g, y, t, Math.min(this.MAXF - 2, deepest + P.grooveDepth + 1));
+    }
+  }
   // final tier where each slab has its own top (skyline)
   crown(x0, x1, y, o = {}) {
     const R = this.R, P = this.P;
-    let n = 1;
-    if (x1 - x0 >= 2 * P.minSlab + 1) { if (R.f() < P.splitChance) n++; if (R.f() < P.splitChance * 0.45) n++; }
-    const ws = splitWidth(x1 - x0, n, R, P.minSlab);
+    const ws = splitWidth(x1 - x0, this.slabCount(x1 - x0), R, P.minSlab);
     let xx = x0; const tops = [], fs = [];
     for (const w of ws) {
       const top = R.int(o.topMin ?? P.heightMin, o.topMax ?? P.heightMax);
-      const f = this.fchoice(); fs.push(f); tops.push(top);
-      this.block(xx, xx + w, y, top, f, { ledge: R.f() < P.ledgeChance * 0.7 });
+      tops.push(top);
+      if (top - y > P.tierMax + 4) {                                   // tall: stack real tiers up to this slab's top
+        const first = this.monos.length;
+        const sh = o.fshift || 0;
+        this.stack(xx, xx + w, y, top, { split: w >= 2 * P.minSlab + 1 && w > (P.slabTarget ?? 11) * 1.4, fpick: () => sh + this.fchoice() });
+        fs.push(this.monos[first]?.f ?? 0);
+      } else {
+        const f = (o.fshift || 0) + this.fchoice(); fs.push(f);
+        const id = this.block(xx, xx + w, y, top, f, { ledge: R.f() < P.ledgeChance * 0.7 });
+        if (id >= 0) this.panelize(id);
+      }
       xx += w + 1;
     }
     xx = x0;
@@ -228,6 +310,7 @@ export class Skin {
   }
   // ---------------------------------------------------------------- features
   free(x0, x1, y0, y1) {
+    if (this.segments) for (const b of this.segments) if (x0 < b && x1 > b) return false;
     for (let x = x0; x < x1; x++) for (let y = y0; y < y1; y++) {
       if (!this.inb(x, y)) return false;
       const k = this.i(x, y); if (this.lock[k] || this.F[k] === NONE) return false;
@@ -313,7 +396,13 @@ export class Skin {
         if (score > best) { best = score; host = m; }
       }
     }
-    const hx0 = host ? host.x0 : 0, hx1 = host ? host.x1 : this.W, hy0 = host ? host.y0 + 1 : 10, hy1 = host ? host.y1 - 1 : this.H - 10;
+    let hx0 = host ? host.x0 : 0, hx1 = host ? host.x1 : this.W;
+    const hy0 = host ? host.y0 + 1 : 10, hy1 = host ? host.y1 - 1 : this.H - 10;
+    if (this.segments) {                                   // keep lettering on one face of a corner
+      const cuts = [0, ...this.segments, this.W]; let best = [hx0, hx1], bestW = -1;
+      for (let i = 0; i < cuts.length - 1; i++) { const a = Math.max(hx0, cuts[i]), b = Math.min(hx1, cuts[i + 1]); if (b - a > bestW) { bestW = b - a; best = [a, b]; } }
+      [hx0, hx1] = best;
+    }
     const x0 = Math.round(hx0 + (hx1 - hx0 - g.w) * P.numberPosX);
     const y0 = Math.round(hy0 + (hy1 - hy0 - g.h) * P.numberPosY);
     const wear = vnoise(this.W, this.H, 2.5, this.R);
@@ -472,6 +561,33 @@ function nearestBand(bands, i) {
   return ['stone'];
 }
 
+// ------------------------------------------------------------------ top surfaces
+// Tops (ledges, wall top) get their own weathering in x AND z, instead of inheriting the face's columns,
+// which used to repeat one block across the whole thickness. Rain collects up here: more grime and moss.
+function makeTop(W, D, P, seed) {
+  const R = new Rng(seed >>> 0), pal = P.palette;
+  const n1 = vnoise(W, D, 9, R), n2 = vnoise(W, D, 2.6, R), wet = vnoise(W, D, 5.5, R), pick = vnoise(W, D, P.patchSize, R).map(v => v * 2.7);
+  const V = new Float32Array(W * D);
+  for (let i = 0; i < W * D; i++) {
+    const puddle = Math.max(0, wet[i] - 0.58) / 0.42;
+    V[i] = P.baseTone + 0.1 + 0.2 * (n1[i] - 0.5) + 0.1 * (n2[i] - 0.5) + P.speckle * (R.f() - 0.5) + 0.45 * puddle;
+  }
+  return {
+    block(x, z, edgeDist) {
+      const i = x * D + z;
+      const v = V[i] + (edgeDist <= 1 ? 0.06 : 0);                    // dirt collects along the edges
+      let band = BANDS.length - 1;
+      for (let b = 0; b < BANDS.length; b++) if (v < BANDS[b]) { band = b; break; }
+      const opts = pal.bands[band].length ? pal.bands[band] : nearestBand(pal.bands, band);
+      let b = opts[Math.floor(((pick[i] + 0.12 * R.f()) % 1) * opts.length) % opts.length];
+      const puddle = Math.max(0, wet[i] - 0.58) / 0.42;
+      if (R.f() < (0.05 + 0.5 * puddle) * P.moss) b = pal.grime;
+      else if (R.f() < 0.015 + 0.02 * P.chips) b = pal.crack;
+      return b;
+    },
+  };
+}
+
 // ------------------------------------------------------------------ layouts
 export const LAYOUTS = {
   stacked(s) {
@@ -484,8 +600,7 @@ export const LAYOUTS = {
     } else {
       y = R.int(4, 8); s.block(0, W, 0, y, R.int(2, 3), { ties: false });
     }
-    s.stack(0, W, y, Math.max(y, P.heightMin - 12));
-    s.crown(0, W, Math.max(y, P.heightMin - 12));
+    s.massing(0, W, y, Math.max(y, P.heightMin - 12));
   },
   towers(s) {
     const P = s.P, R = s.R, W = s.W;
@@ -523,8 +638,7 @@ export const LAYOUTS = {
     s.block(cx0 - 2, cx0 + cw + 2, y, y + h2, 1, { ledge: true });
     for (const [a, b] of [[0, cx0 - 2], [cx0 + cw + 2, W]]) if (b - a >= 2) s.block(a, b, y, y + h2, Math.min(o, 3));
     y += h2;
-    s.stack(0, W, y, Math.max(y, P.heightMin - 8), { fpick: () => R.int(2, Math.max(2, P.reliefMax)) });
-    s.crown(0, W, Math.max(y, P.heightMin - 8));
+    s.massing(0, W, y, Math.max(y, P.heightMin - 8), { fpick: () => R.int(2, Math.max(2, P.reliefMax)) });
     const m = s.monos[cube];
     s.rustStreak(m.x0 + R.int(2, Math.max(2, cw - 3)), m.x0 + R.int(2, Math.max(2, cw - 3)) + 2, m.y1 - 2, R.int(8, 13));
   },
@@ -556,8 +670,7 @@ export const LAYOUTS = {
     s.hero = s.block(sx0, sx0 + sw, hb, hb + sh, R.int(0, 1), { tone: -0.03 });
     for (const [a, b] of [[0, sx0 - 1], [sx0 + sw + 1, W]]) if (b - a >= 2) s.stack(a, b, hb, R.int(Math.max(hb + sh - 4, P.heightMin - 10), P.heightMax), { split: false });
     s.groove(sx0 - 1, hb, hb + sh, 5); s.groove(sx0 + sw, hb, hb + sh, 5);
-    s.stack(sx0, sx0 + sw, hb + sh, Math.max(hb + sh, P.heightMin - 8));
-    s.crown(sx0, sx0 + sw, Math.max(hb + sh, P.heightMin - 8));
+    s.massing(sx0, sx0 + sw, hb + sh, Math.max(hb + sh, P.heightMin - 8));
   },
   flat(s, front) {
     for (let x = 0; x < s.W; x++) for (let y = 0; y < s.H; y++) if (front.getF(s.W - 1 - x, y) < NONE) s.F[s.i(x, y)] = 0;
@@ -567,8 +680,9 @@ export const LAYOUTS = {
 };
 export const LAYOUT_NAMES = { stacked: 'Stacked tiers', towers: 'Twin towers', cantilever: 'Cantilever / overhang', beam: 'Beam & passage', slab: 'Sector slab' };
 
-function buildSkin(W, H, seed, P, layout, feat, frontForFlat) {
+function buildSkin(W, H, seed, P, layout, feat, frontForFlat, segments) {
   const s = new Skin(W, H, seed, P);
+  if (segments) s.segments = segments;
   if (layout === 'flat') LAYOUTS.flat(s, frontForFlat);
   else { LAYOUTS[layout](s); s.plinth(); s.features(feat); }
   s.weather();
@@ -577,32 +691,44 @@ function buildSkin(W, H, seed, P, layout, feat, frontForFlat) {
 
 // ------------------------------------------------------------------ whole structure
 export function generate(P) {
+  const g = P.piece === 'corner' ? generateCorner(P) : generateStraight(P);
+  if (P.ivy) applyIvy(g, P);
+  return g;
+}
+function featBundle(P, side, k = 1) {
+  const q = v => Math.round(v * k);
+  const lettering = side === 'front' ? (P.numberSide !== 'back' ? P.numberText : '') : (P.numberSide !== 'front' ? P.numberText : '');
+  return { doorways: q(P.doorways), hazards: q(P.hazards), portholes: q(P.portholes), grilles: q(P.grilles), windows: q(P.windows), channels: q(P.channels), lettering };
+}
+function backLayoutFor(P, W) {
+  const br = new Rng(P.seed * 7919 + P.backSeedOffset + [...P.layout].reduce((h, c) => h * 31 + c.charCodeAt(0), 7));
+  const pool = ['stacked', 'towers', 'cantilever', ...(W >= 30 ? ['beam'] : [])];
+  return P.backLayout === 'auto' ? br.pick(pool) : P.backLayout === 'same' ? P.layout : P.backLayout;
+}
+const backK = P => P.backFeatures === 'none' ? 0 : P.backFeatures === 'fewer' ? 0.5 : 1;
+
+function generateStraight(P) {
   const W = P.width, H = P.heightMax + 2, D = P.thickness;
-  const feat = { doorways: P.doorways, hazards: P.hazards, portholes: P.portholes, grilles: P.grilles, windows: P.windows, channels: P.channels, lettering: (P.numberSide !== 'back') ? P.numberText : '' };
+  const feat = featBundle(P, 'front');
   const front = buildSkin(W, H, P.seed, P, P.layout, feat);
   let back;
   if (!P.doubleSided) back = buildSkin(W, H, P.seed + 1, P, 'flat', {}, front);
   else {
-    const br = new Rng(P.seed * 7919 + P.backSeedOffset + [...P.layout].reduce((h, c) => h * 31 + c.charCodeAt(0), 7));
-    const pool = ['stacked', 'towers', 'cantilever', ...(W >= 30 ? ['beam'] : [])];
-    const bl = P.backLayout === 'auto' ? br.pick(pool) : P.backLayout === 'same' ? P.layout : P.backLayout;
-    const k = P.backFeatures === 'none' ? 0 : P.backFeatures === 'fewer' ? 0.5 : 1;
-    const q = v => Math.round(v * k);
-    const bfeat = { doorways: q(P.doorways), hazards: q(P.hazards), portholes: q(P.portholes), grilles: q(P.grilles), windows: q(P.windows), channels: q(P.channels), lettering: (P.numberSide !== 'front') ? P.numberText : '' };
-    back = buildSkin(W, H, P.seed + P.backSeedOffset, P, bl, bfeat);
+    const bl = backLayoutFor(P, W);
+    back = buildSkin(W, H, P.seed + P.backSeedOffset, P, bl, featBundle(P, 'back', backK(P)));
     back.layoutName = bl;
   }
   return combine(front, back, W, H, D, P);
 }
 
-function endSkin(front, W, H, D, P, side) {
+function endSkin(tierSkin, col, H, D, P, side) {
   const EP = { ...P, reliefMax: Math.max(0, P.endRelief ?? 2), tieChance: P.tieChance * 0.7, splitChance: 0.55,
     minSlab: Math.max(3, Math.floor(D / 4)), ledgeChance: 0.2, jointDepth: Math.min(1, P.jointDepth), cracks: Math.ceil(P.cracks / 2) };
   const s = new Skin(D, H, (P.seed * 31 + 7 + side * 1013) >>> 0, EP);
   // tier breaks follow the front's slabs at this end, so horizontal joints wrap around the corner
-  const fx = side ? W - 1 : 0, breaks = [0];
+  const breaks = [0];
   for (let y = 1; y < H; y++) {
-    const a = front.mono[fx * H + y], b = front.mono[fx * H + y - 1];
+    const a = tierSkin.mono[col * H + y], b = tierSkin.mono[col * H + y - 1];
     if (a !== b && a >= 0 && y - breaks[breaks.length - 1] >= 4) breaks.push(y);
   }
   if (H - breaks[breaks.length - 1] < 3) breaks.pop();
@@ -631,7 +757,7 @@ function combine(front, back, W, H, D, P) {
     zf[i] = Math.max(a, b); zb[i] = b;
   }
   // each end face gets its own designed skin (width = thickness), with joints aligned to the front's tiers
-  const ends = [endSkin(front, W, H, D, P, 0), endSkin(front, W, H, D, P, 1)];
+  const ends = [endSkin(front, 0, H, D, P, 0), endSkin(front, W - 1, H, D, P, 1)];
   const relief = P.endDetail ? Math.max(0, P.endRelief ?? 2) : 0;
   const eF = (side, z, y) => {
     if (!relief) return 0;
@@ -644,6 +770,7 @@ function combine(front, back, W, H, D, P) {
   const kid = b => { let v = idx.get(b); if (v === undefined) { v = keys.length; keys.push(b); idx.set(b, v); } return v; };
   const data = new Uint16Array(W * H * D);
   const at = (x, y, z) => (y * D + z) * W + x;   // schematic order: x fastest, then z, then y
+  const roof = makeTop(W, D, P, P.seed * 17 + 5);
   const pal = P.palette;
   for (let x = 0; x < W; x++) for (let y = 0; y < H; y++) {
     const i = x * H + y; if (!has[i]) continue;
@@ -651,7 +778,12 @@ function combine(front, back, W, H, D, P) {
       if (!solid(x, y, z)) continue;
       const oF = !solid(x, y, z + 1), oB = !solid(x, y, z - 1), oL = !solid(x - 1, y, z), oR = !solid(x + 1, y, z);
       let b;
-      if (!(oF || oB || oL || oR) && solid(x, y + 1, z) && solid(x, y - 1, z)) b = pal.interior;
+      const oU = !solid(x, y + 1, z);
+      if (!(oF || oB || oL || oR) && !oU && solid(x, y - 1, z)) b = pal.interior;
+      else if (oU && !(oF || oB || oL || oR)) {                   // top surface
+        let e = 9; for (let d = 1; d <= 2 && e === 9; d++) if (!solid(x, y, z + d) || !solid(x, y, z - d) || !solid(x + d, y, z) || !solid(x - d, y, z)) e = d;
+        b = roof.block(x, z, e);
+      }
       else if (!oF && !oB && (oL || oR)) {                     // end face
         const side = oL && (!oR || x < W / 2) ? 0 : 1;
         b = ends[side].faceBlock(side ? D - 1 - z : z, y, true);
@@ -676,6 +808,283 @@ function combine(front, back, W, H, D, P) {
   return { W, H: top, D, data: data.subarray(0, top * D * W), keys, backLayout: back.layoutName };
 }
 
+// ------------------------------------------------------------------ grids: trim, rotate, compose
+function trimTop(W, H, D, data) {
+  let top = 0;
+  for (let y = H - 1; y >= 0 && !top; y--) for (let i = y * D * W, e = i + D * W; i < e; i++) if (data[i]) { top = y + 1; break; }
+  return top;
+}
+const TURN = { n: 'e', e: 's', s: 'w', w: 'n' };
+function turnKey(k, q) {
+  const [base, v] = k.split('|');
+  if (v === undefined || q % 4 === 0) return k;
+  if (v === 'h' || v === 'z') return base + '|' + ((q % 2) ? (v === 'h' ? 'z' : 'h') : v);
+  if (v === 'v') return k;
+  let letters = [...v];
+  for (let i = 0; i < q % 4; i++) letters = letters.map(c => TURN[c] || c);
+  return base + '|' + letters.sort().join('');
+}
+// q quarter turns clockwise, seen from above (north -> east -> south -> west)
+export function rotateGrid(g, q) {
+  q = ((q % 4) + 4) % 4;
+  if (!q) return g;
+  const { W, H, D, data } = g;
+  const W2 = q % 2 ? D : W, D2 = q % 2 ? W : D;
+  const out = new Uint16Array(W2 * H * D2);
+  const keys = g.keys.map(k => turnKey(k, q));
+  for (let y = 0; y < H; y++) for (let z = 0; z < D; z++) for (let x = 0; x < W; x++) {
+    const v = data[(y * D + z) * W + x]; if (!v) continue;
+    let nx = x, nz = z;
+    if (q === 1) { nx = D - 1 - z; nz = x; }
+    else if (q === 2) { nx = W - 1 - x; nz = D - 1 - z; }
+    else { nx = z; nz = W - 1 - x; }
+    out[(y * D2 + nz) * W2 + nx] = v;
+  }
+  return { ...g, W: W2, D: D2, data: out, keys };
+}
+// pieces: [{ g, x, z }] -> one grid covering all of them
+export function composeGrids(pieces) {
+  const x0 = Math.min(...pieces.map(p => p.x)), z0 = Math.min(...pieces.map(p => p.z));
+  const W = Math.max(...pieces.map(p => p.x + p.g.W)) - x0, D = Math.max(...pieces.map(p => p.z + p.g.D)) - z0, H = Math.max(...pieces.map(p => p.g.H));
+  const data = new Uint16Array(W * H * D), keys = ['air'], idx = new Map([['air', 0]]);
+  for (const { g, x, z } of pieces) {
+    const map = g.keys.map(k => { let v = idx.get(k); if (v === undefined) { v = keys.length; keys.push(k); idx.set(k, v); } return v; });
+    for (let y = 0; y < g.H; y++) for (let zz = 0; zz < g.D; zz++) for (let xx = 0; xx < g.W; xx++) {
+      const v = g.data[(y * g.D + zz) * g.W + xx]; if (v) data[(y * D + zz + z - z0) * W + xx + x - x0] = map[v];
+    }
+  }
+  return { W, H, D, data, keys };
+}
+
+// ------------------------------------------------------------------ corner (L-shaped) piece
+// Built with the outer corner at the origin (outer faces north + west), then turned 180° so that,
+// like the straight walls, the outer face points south and continues round onto the east face.
+function generateCorner(P) {
+  const D = P.thickness, L = Math.max(P.width, D + 6), H = P.heightMax + 2, n = L - D, mid = D >> 1;
+  const core = Math.max(2, P.minCore);
+  const outer = buildSkin(2 * L, H, P.seed, P, P.layout, featBundle(P, 'front'), null, [L]);
+  const innerLayout = P.doubleSided ? backLayoutFor(P, 2 * n) : 'stacked';
+  const IP = P.doubleSided ? P : { ...P, reliefMax: 0, splitChance: 0.2, ledgeChance: 0 };
+  const inner = buildSkin(2 * n, H, P.seed + P.backSeedOffset, IP, innerLayout, P.doubleSided ? featBundle(P, 'back', backK(P) * 0.6) : featBundle(P, 'back', 0), null, [n]);
+  const endA = endSkin(outer, 0, H, D, P, 0), endB = endSkin(outer, 2 * L - 1, H, D, P, 1);
+  const relief = P.endDetail ? Math.max(0, P.endRelief ?? 2) : 0;
+  const clampF = v => v >= NONE ? null : Math.min(v, D - core - 1);
+  const oF = (u, y) => clampF(outer.F[u * H + y]);
+  const iF = (u, y) => clampF(inner.F[u * H + y]);
+  const eFa = (e, y) => relief ? Math.min(relief, endA.F[e * H + y] >= NONE ? 0 : endA.F[e * H + y]) : 0;
+  const eFb = (e, y) => relief ? Math.min(relief, endB.F[e * H + y] >= NONE ? 0 : endB.F[e * H + y]) : 0;
+  const occ = new Uint8Array(L * H * L), at = (x, y, z) => (y * L + z) * L + x;
+  for (let y = 0; y < H; y++) for (let z = 0; z < L; z++) for (let x = 0; x < L; x++) {
+    const armA = z < D, armB = x < D;
+    if (!armA && !armB) continue;
+    const on = armA ? oF(L - 1 - x, y) : null, ow = armB ? oF(L + z, y) : null;   // outer depth (north / west)
+    if (on === null && ow === null) continue;
+    let ok = true;
+    if (armA) ok &&= on === null ? z >= mid : z >= on;
+    if (armB) ok &&= ow === null ? x >= mid : x >= ow;
+    if (armA && !armB) {                          // arm A, inner face looks south
+      const i = iF(n + x - D, y), lim = i === null ? D - 1 - mid : D - 1 - Math.min(i, D - core - (on ?? mid));
+      ok &&= z <= lim; ok &&= x <= L - 1 - eFa(D - 1 - z, y);
+    }
+    if (armB && !armA) {                          // arm B, inner face looks east
+      const i = iF(L - 1 - z, y), lim = i === null ? D - 1 - mid : D - 1 - Math.min(i, D - core - (ow ?? mid));
+      ok &&= x <= lim; ok &&= z <= L - 1 - eFb(x, y);
+    }
+    if (ok) occ[at(x, y, z)] = 1;
+  }
+  const solid = (x, y, z) => x >= 0 && y >= 0 && z >= 0 && x < L && y < H && z < L && occ[at(x, y, z)] === 1;
+  const keys = ['air'], idx = new Map([['air', 0]]);
+  const kid = b => { let v = idx.get(b); if (v === undefined) { v = keys.length; keys.push(b); idx.set(b, v); } return v; };
+  const data = new Uint16Array(L * H * L), pal = P.palette, roof = makeTop(L, L, P, P.seed * 17 + 5);
+  for (let y = 0; y < H; y++) for (let z = 0; z < L; z++) for (let x = 0; x < L; x++) {
+    if (!solid(x, y, z)) continue;
+    const nN = !solid(x, y, z - 1), nW = !solid(x - 1, y, z), nS = !solid(x, y, z + 1), nE = !solid(x + 1, y, z);
+    let b;
+    const nU = !solid(x, y + 1, z);
+    if (!(nN || nW || nS || nE || nU || !solid(x, y - 1, z))) b = pal.interior;
+    else if (nU && !(nN || nW || nS || nE)) {
+      let e = 9; for (let d = 1; d <= 2 && e === 9; d++) if (!solid(x, y, z + d) || !solid(x, y, z - d) || !solid(x + d, y, z) || !solid(x - d, y, z)) e = d;
+      b = roof.block(x, z, e);
+    }
+    else if (nN && z < D) b = outer.faceBlock(L - 1 - x, y, true);
+    else if (nW && x < D) b = outer.faceBlock(L + z, y, true);
+    else if (nS && z < D && x >= D) b = inner.faceBlock(n + x - D, y, true);
+    else if (nE && x < D && z >= D) b = inner.faceBlock(L - 1 - z, y, true);
+    else if (nE && z < D) b = endA.faceBlock(D - 1 - z, y, true);
+    else if (nS && x < D) b = endB.faceBlock(x, y, true);
+    else b = z < D ? outer.faceBlock(L - 1 - x, y, false) : outer.faceBlock(L + z, y, false);
+    data[at(x, y, z)] = kid(b);
+  }
+  // iron bars in port-holes and vent louvres, mapped from skin space to the world
+  const place = (x, y, z, b) => { if (x >= 0 && y >= 0 && z >= 0 && x < L && y < H && z < L && !data[at(x, y, z)]) data[at(x, y, z)] = kid(b); };
+  const mapOuter = (u, y, d, b) => u < L ? place(L - 1 - u, y, d, b) : place(d, y, u - L, b);
+  const mapInner = (u, y, d, b) => u < n ? place(D - 1 - d, y, L - 1 - u, b) : place(D + (u - n), y, D - 1 - d, b);
+  for (const [sk, map, W2, cut] of [[outer, mapOuter, 2 * L, L], [inner, mapInner, 2 * n, n]]) {
+    for (const { cx, cy, r, f } of sk.bars) for (let u = cx - r; u <= cx + r; u++) for (let y = cy - r; y <= cy + r; y++)
+      if (u >= 0 && u < W2 && Math.hypot(u - cx, y - cy) <= r - 0.4 && (u - cx) % 2) map(u, y, f + 1, pal.bars + '|v');
+    for (const { x: u, y, z: d } of sk.louvre) {
+      const alongX = sk === outer ? u < cut : u >= cut;
+      map(u, y, d, pal.bars + (alongX ? '|h' : '|z'));
+    }
+  }
+  const top = trimTop(L, H, L, data);
+  const g = { W: L, H: top, D: L, data: data.subarray(0, top * L * L), keys, backLayout: innerLayout, corner: true, arm: L };
+  return rotateGrid(g, 2);
+}
+
+// ------------------------------------------------------------------ ivy & vines
+// A growth simulation: vines start from roots (ground, ledges, cracks), wander over the real surfaces of
+// the structure, branch, wrap round corners and thin out. Growth is drawn to shade and damp (north
+// faces, grooves, under ledges, low down and along the darker stained blocks) and dies back in dry sun.
+const SOFT = k => k.includes('|') || k.endsWith('_leaves') || k === 'moss_carpet';
+const FACE = { n: [0, -1], s: [0, 1], e: [1, 0], w: [-1, 0] };            // direction from the vine to its wall
+const ORIENT = { s: 1.0, e: 0.68, w: 0.68, n: 0.55 };                      // wall to the south = a north-facing, shaded face
+export function applyIvy(g, P) {
+  const { W, H, D, data, keys } = g;
+  const R = new Rng((P.seed * 131 + (P.ivyVariation || 1) * 977) >>> 0);
+  const at = (x, y, z) => (y * D + z) * W + x;
+  const inb = (x, y, z) => x >= 0 && y >= 0 && z >= 0 && x < W && y < H && z < D;
+  const idx = new Map(keys.map((k, i) => [k, i]));
+  const kid = b => { let v = idx.get(b); if (v === undefined) { v = keys.length; keys.push(b); idx.set(b, v); } return v; };
+  const soft = keys.map(SOFT);
+  const solid = (x, y, z) => inb(x, y, z) && data[at(x, y, z)] !== 0 && !soft[data[at(x, y, z)]];
+  const free = (x, y, z) => inb(x, y, z) && data[at(x, y, z)] === 0;
+
+  // dampness of each block type: darker shade bands and grime / crack blocks read as wet
+  const pal = P.palette, dampOf = new Map();
+  (pal.bands || []).forEach((band, b) => band.forEach(k => { if (!dampOf.has(k)) dampOf.set(k, b / 8); }));
+  for (const r of ['grime', 'crack', 'deep', 'rust2']) if (pal[r]) dampOf.set(pal[r], 0.95);
+  const damp = (x, y, z) => { const v = data[at(x, y, z)]; return v ? (dampOf.get(keys[v]) ?? 0.4) : 0; };
+  const shadeK = P.ivyShade ?? 0.7;
+  const cl = vnoise(W, D, Math.max(2, P.ivyCluster), R);
+  const clump = (x, z) => cl[Math.max(0, Math.min(W - 1, x)) * D + Math.max(0, Math.min(D - 1, z))];
+  // how welcoming a spot is for ivy growing on the wall in direction f
+  const suit = (x, y, z, f) => {
+    const [fx, fz] = FACE[f];
+    let shelter = 0;
+    for (let k = 1; k <= 6; k++) if (solid(x, y + k, z)) { shelter = 0.55 * (1 - (k - 1) / 6); break; }
+    let sides = 0; for (const c in FACE) if (solid(x + FACE[c][0], y, z + FACE[c][1])) sides++;
+    const groove = sides >= 2 ? 0.22 : 0;
+    const low = 1 + 0.55 * Math.max(0, 1 - y / 22);
+    const s = ORIENT[f] * (0.3 + 0.7 * damp(x + fx, y, z + fz)) * (1 + shelter + groove) * low * (0.55 + 0.9 * clump(x, z));
+    return Math.pow(s, shadeK);                                            // shadeK = 0: grows anywhere; 1: strongly selective
+  };
+  const faceTo = (x, y, z) => { let f = ''; for (const c of 'ensw') if (solid(x + FACE[c][0], y, z + FACE[c][1])) f += c; return f; };
+
+  const vines = new Map(), leaves = new Map(), carpets = new Set();
+  const addVine = (x, y, z) => {
+    if (!free(x, y, z)) return false;
+    const f = faceTo(x, y, z), k = at(x, y, z);
+    if (leaves.has(k)) return false;
+    const hanging = !f;
+    if (hanging && !vines.has(at(x, y + 1, z))) return false;               // hanging vines need a vine above
+    vines.set(k, f || vines.get(at(x, y + 1, z)));
+    return true;
+  };
+
+  // one growing strand
+  const grow = (x, y, z, f, dir, energy, lateral) => {
+    let hang = 0, steps = 0;
+    const stack = [];
+    while (energy > 0 && steps++ < 400) {
+      if (!addVine(x, y, z)) break;
+      if (vines.size > 60000) return;
+      const here = faceTo(x, y, z);
+      if (here && !here.includes(f)) f = here[0];
+      const [fx, fz] = here ? FACE[f] : [0, 0];
+      // ledge top next to the strand: moss / leaf clumps where the vine spills over
+      if (solid(x, y - 1, z) && here && R.f() < P.ivyMoss * 0.4) carpets.add(at(x - fz, y, z + fx));
+      if (dir > 0 && here && !solid(x + fx, y + 1, z + fz) && R.f() < P.ivyLeaves * 0.8) {   // reached the top of a wall face
+        for (let n = R.int(1, 4); n--;) leafAt(x + fx + R.int(-1, 1) * (fz ? 1 : 0), y + 1 + (R.f() < 0.3 ? 1 : 0), z + fz + R.int(-1, 1) * (fx ? 1 : 0));
+      }
+      // candidate moves
+      const tx = -fz, tz = fx, cand = [];
+      const push = (nx, ny, nz, nf, w, hangMove) => {
+        if (!free(nx, ny, nz)) return;
+        const att = faceTo(nx, ny, nz);
+        if (!att && !(hangMove && hang < 3)) return;
+        const ff = att ? (att.includes(nf) ? nf : att[0]) : f;
+        cand.push({ nx, ny, nz, nf: ff, w: w * (att ? suit(nx, ny, nz, ff) : 0.35), hanging: !att });
+      };
+      push(x, y + dir, z, f, 3.2, dir < 0);
+      const blockedV = !free(x, y + dir, z);                             // stopped by an overhang / floor
+      for (const sgn of [1, -1]) {
+        const lx = x + tx * sgn, lz = z + tz * sgn, lw = (sgn === lateral ? 1.4 : 0.5) * P.ivyWander * (blockedV ? 0.3 : 1);
+        if (solid(lx, y, lz)) push(x, y, z, sgn > 0 ? faceOf(tx, tz) : faceOf(-tx, -tz), lw * 0.6);      // inner corner: turn onto the new wall
+        else if (here && !solid(lx + fx, y, lz + fz)) push(lx + fx, y, lz + fz, faceOf(-tx * sgn, -tz * sgn), lw * 0.8); // outer corner: wrap round
+        else push(lx, y, lz, f, lw);
+      }
+      if (!cand.length) break;
+      let tot = 0; for (const c of cand) tot += c.w;
+      if (tot <= 0) break;
+      let r = R.f() * tot, pick = cand[0];
+      for (const c of cand) { r -= c.w; if (r <= 0) { pick = c; break; } }
+      if (pick.nx === x && pick.ny === y && pick.nz === z) { f = pick.nf; energy -= 0.5; continue; }
+      hang = pick.hanging ? hang + 1 : 0;
+      const s = pick.hanging ? 0.4 : suit(pick.nx, pick.ny, pick.nz, pick.nf);
+      energy -= 1.35 / (0.45 + s) * (vines.has(at(pick.nx, pick.ny, pick.nz)) ? 2 : 1) * (blockedV && pick.ny === y ? 2.5 : 1);
+      if (R.f() < 0.1) lateral = -lateral;
+      // branch: a thinner side shoot
+      if (R.f() < P.ivyBranching && energy > 4) stack.push([x, y, z, f, R.f() < 0.8 ? dir : -dir, energy * R.uniform(0.35, 0.6), R.f() < 0.5 ? 1 : -1]);
+      x = pick.nx; y = pick.ny; z = pick.nz; f = pick.nf;
+    }
+    for (const b of stack) grow(...b);
+  };
+  const faceOf = (dx, dz) => dx > 0 ? 'e' : dx < 0 ? 'w' : dz > 0 ? 's' : 'n';
+  const leafAt = (x, y, z) => { if (free(x, y, z) && !vines.has(at(x, y, z))) leaves.set(at(x, y, z), R.f() < 0.22 ? leafB : leafA); };
+  const leafA = P.ivyLeafBlock || 'azalea_leaves', leafB = leafA === 'azalea_leaves' ? 'flowering_azalea_leaves' : leafA;
+
+  // roots: gather spots, weighted by how welcoming they are
+  const drapes = [], roots = [], cracks = [];
+  for (let y = 0; y < H; y++) for (let z = 0; z < D; z++) for (let x = 0; x < W; x++) {
+    if (!free(x, y, z)) continue;
+    for (const f of 'ensw') {
+      const [fx, fz] = FACE[f];
+      if (!solid(x + fx, y, z + fz)) continue;
+      const topEdge = !solid(x + fx, y + 1, z + fz), underLedge = solid(x, y + 1, z);
+      if ((topEdge || underLedge) && y > 4) drapes.push([x, y, z, f]);
+      else if ((y === 0 || solid(x, y - 1, z)) && y <= 3) roots.push([x, y, z, f]);
+      else if (damp(x + fx, y, z + fz) > 0.85 && y > 6) cracks.push([x, y, z, f]);
+    }
+  }
+  const sow = (list, rate, dir, energy, width) => {
+    for (const [x, y, z, f] of list) {
+      const s = suit(x, y, z, f);
+      if (R.f() >= rate * s) continue;
+      const [fx, fz] = FACE[f], tx = -fz, tz = fx, w = R.int(0, Math.max(0, width));
+      for (let k = -w; k <= w; k++) {                                    // a clump of strands, longer in the middle
+        const prof = 1 - Math.pow(Math.abs(k) / (w + 1), 1.5);
+        const sx = x + tx * k, sz = z + tz * k;
+        if (!free(sx, y, sz) || !solid(sx + fx, y, sz + fz)) continue;
+        grow(sx, y, sz, f, dir, energy * (0.3 + 0.7 * prof) * R.uniform(0.6, 1.25), R.f() < 0.5 ? 1 : -1);
+      }
+      if (dir < 0 && !solid(x + fx, y + 1, z + fz) && R.f() < P.ivyLeaves) {   // leaves spilling over the ledge above a drape
+        for (let n = R.int(1, 5); n--;) leafAt(x + fx + R.int(-1, 1) * (fz ? 1 : 0), y + 1 + (R.f() < 0.25 ? 1 : 0), z + fz + R.int(-1, 1) * (fx ? 1 : 0));
+        if (R.f() < 0.5) leafAt(x, y + 1, z);
+      }
+    }
+  };
+  sow(drapes, P.ivyAmount * 0.06, -1, P.ivyLength, P.ivyWidth);
+  sow(roots, P.ivyClimb * 0.10, 1, P.ivyClimbHeight, P.ivyWidth + 1);
+  sow(cracks, P.ivyAmount * 0.008, R.f() < 0.5 ? 1 : -1, P.ivyLength * 0.45, 1);
+
+  // dense mats get leafy: swap some vines for leaves pressed against the wall
+  for (const [k] of vines) {
+    const x = k % W, z = Math.floor(k / W) % D, y = Math.floor(k / (W * D));
+    let n = 0; for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) for (let dz = -1; dz <= 1; dz++) if (vines.has(at(x + dx, y + dy, z + dz))) n++;
+    const holdsHanging = vines.has(at(x, y - 1, z)) && !faceTo(x, y - 1, z);
+    if (n >= 8 && !holdsHanging && R.f() < P.ivyLeaves * 0.18 && faceTo(x, y, z)) leaves.set(k, R.f() < 0.22 ? leafB : leafA);
+  }
+  for (const [k, fs] of vines) if (!leaves.has(k)) data[k] = kid('vine|' + [...fs].sort().join(''));
+  for (const [k, b] of leaves) if (!data[k]) data[k] = kid(b);
+  for (const k of carpets) {
+    const x = k % W, z = Math.floor(k / W) % D, y = Math.floor(k / (W * D));
+    if (inb(x, y, z) && !data[k] && solid(x, y - 1, z) && R.f() < 0.7) data[k] = kid('moss_carpet');
+  }
+  g.ivyCount = vines.size;
+  return g;
+}
+
 // ------------------------------------------------------------------ defaults & presets
 export const DEFAULT_PALETTE = {
   bands: [
@@ -690,7 +1099,7 @@ export const DEFAULT_PALETTE = {
 export const DEFAULTS = {
   name: 'my_wall', layout: 'stacked', seed: 1234, width: 20, heightMin: 70, heightMax: 74, thickness: 24,
   doubleSided: true, backLayout: 'auto', backSeedOffset: 9000, backFeatures: 'same', minCore: 4, endDetail: true, endRelief: 2,
-  reliefMax: 4, tierMin: 8, tierMax: 14, splitChance: 0.6, minSlab: 5, ledgeChance: 0.5, jointDepth: 1, grooveDepth: 2, formlineChance: 0.5,
+  reliefMax: 4, tierMin: 8, tierMax: 14, splitChance: 0.6, minSlab: 5, slabTarget: 11, panelDetail: 0.55, bayWidth: 20, bayRelief: 3, ledgeChance: 0.5, jointDepth: 1, grooveDepth: 2, formlineChance: 0.5,
   fins: true, finHeightMin: 15, finHeightMax: 22, finWidth: 2, finGapMin: 3, finGapMax: 5, plinthHeight: 2, plinthDepth: 2,
   towerCount: 2, towerGap: 2, towerGapDepth: 8, cubeWidth: 12, cubeHeight: 14, overhang: 5,
   passageHeight: 14, passageDepth: 14, beamHeight: 6, slabWidth: 16, slabHeight: 43,
@@ -703,6 +1112,8 @@ export const DEFAULTS = {
   streakStrength: 1.05, streakLength: 32, streakCoverage: 0.5, grimeHeight: 10, grimeStrength: 0.30, moss: 1.0,
   cracks: 2, crackRust: 0.4, rust: 1.0, chips: 0.5, pockmarks: 0.003,
   palette: DEFAULT_PALETTE,
+  piece: 'straight', cornerPreview: true,
+  ivy: true, ivyAmount: 0.35, ivyLength: 22, ivyWidth: 4, ivyClimb: 0.35, ivyClimbHeight: 14, ivyLeaves: 0.55, ivyMoss: 0.35, ivyCluster: 7, ivyVariation: 1, ivyLeafBlock: 'azalea_leaves', ivyBranching: 0.07, ivyWander: 0.45, ivyShade: 0.7,
   autoPalette: true, autoRoles: true, autoContrast: 1.0, autoSpread: 0.08, autoSatMax: 0.12, roleLock: {},
   autoBlocks: ['smooth_stone', 'andesite', 'polished_andesite', 'stone', 'stone_bricks', 'cracked_stone_bricks', 'tuff',
     'mossy_stone_bricks', 'cut_deepslate', 'cut_scoria', 'red_terracotta', 'yellow_terracotta'],
@@ -716,5 +1127,8 @@ export const PRESETS = {
   'Beam passage (40 wide)': { layout: 'beam', width: 40, fins: false, portholes: 1, channels: 1 },
   'Sector slab 5': { layout: 'slab', fins: false, numberText: '5', numberHeight: 28, numberWidth: 1.0, doorways: 1 },
   'Glade door wall (60 wide)': { layout: 'towers', width: 60, towerCount: 3, towerGap: 6, towerGapDepth: 14, fins: true, channels: 2, heightMin: 72, heightMax: 76 },
+  'Corner piece': { piece: 'corner', layout: 'stacked', width: 30, fins: true },
+  'Overgrown corner': { piece: 'corner', layout: 'stacked', width: 30, fins: true, ivyAmount: 1, ivyClimb: 0.95, ivyLeaves: 0.9, ivyMoss: 0.7, ivyLength: 46, ivyClimbHeight: 30, ivyWidth: 7, ivyBranching: 0.1, moss: 1.8 },
+  'Overgrown wall': { layout: 'stacked', fins: true, ivyAmount: 1, ivyClimb: 0.95, ivyLeaves: 0.9, ivyMoss: 0.7, ivyLength: 46, ivyClimbHeight: 30, ivyWidth: 7, ivyBranching: 0.1, moss: 1.8, streakStrength: 1.3 },
   'Ruined low wall': { layout: 'stacked', heightMin: 30, heightMax: 42, cracks: 7, chips: 0.9, pockmarks: 0.02, moss: 2, streakStrength: 1.4, fins: false },
 };

@@ -14,6 +14,19 @@ Design, preview and export Maze Runner-style wall structures for Minecraft (Worl
 4. **Batch…** exports many seeded variants at once (optionally numbered 1, 2, 3…).
 5. **Open .schem** previews any existing Sponge schematic.
 
+## Corner pieces
+Set **Piece → Corner (L-shape)**. Width becomes the arm length (measured on the outside). The outer faces
+(south + east) are one continuous design that wraps round the corner; the inner corner has its own design.
+*Show attached walls* previews it joined to straight walls (only the corner itself is exported).
+Paste it like the straight walls: stand in front of the left end facing north, `//paste -a`.
+
+## Ivy & vines
+A growth simulation run on the finished structure: strands take root on the ground, ledges and cracks, then
+wander over the real surfaces — branching, wrapping round corners and thinning into tendrils. Growth is drawn
+to shade and damp (north faces, grooves, under ledges, low down, along the darker stained blocks) and dies back
+in dry sun; leafy mats form where it is densest and moss gathers on the ledges it crosses. Every vine is attached to a real wall face (or hangs
+from the vine above it) and leaves are exported as persistent, so nothing decays or drops after pasting.
+
 ## Shortcuts
 R new seed · M remix · E download · P screenshot · 1–6 camera views · Ctrl+Z / Ctrl+Shift+Z undo/redo · Ctrl+S save
 Double-click a slider to reset it. Orange dots mark settings changed from default.

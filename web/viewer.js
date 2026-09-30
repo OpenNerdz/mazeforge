@@ -1,7 +1,9 @@
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 
-const BAR_BOX = { h: [0, 0, 0.4375, 1, 1, 0.5625], v: [0.4375, 0, 0.4375, 0.5625, 1, 0.5625] };
+const BAR_BOX = { h: [0, 0, 0.4375, 1, 1, 0.5625], z: [0.4375, 0, 0, 0.5625, 1, 1], v: [0.4375, 0, 0.4375, 0.5625, 1, 0.5625] };
+// vines hug the face they are attached to (letter = direction of the wall block)
+const VINE_BOX = { n: [0, 0, 0.001, 1, 1, 0.045], s: [0, 0, 0.955, 1, 1, 0.999], e: [0.955, 0, 0, 0.999, 1, 1], w: [0.001, 0, 0, 0.045, 1, 1] };
 const ease = t => t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
 
 export class Viewer {
@@ -98,7 +100,7 @@ export class Viewer {
         if (e.alpha === 'blend') { mat.transparent = true; mat.depthWrite = false; }
         return mat;
       };
-      m = e.faces && e.shape !== 'cross' ? e.faces.map(mk) : mk(e.icon);
+      m = e.faces && e.shape !== 'cross' && base !== 'vine' ? e.faces.map(mk) : mk(e.icon);
     } else {
       let h = 0; for (const ch of base) h = (h * 31 + ch.charCodeAt(0)) >>> 0;
       m = new THREE.MeshLambertMaterial({ color: new THREE.Color().setHSL((h % 360) / 360, 0.35, 0.5) });
@@ -110,7 +112,8 @@ export class Viewer {
     if (this.geoCache.has(key)) return this.geoCache.get(key);
     const [base, variant] = key.split('|'), e = this.library[base];
     let g;
-    if (variant && BAR_BOX[variant]) g = boxGeometry(BAR_BOX[variant]);
+    if (base === 'vine') g = boxGeometry(VINE_BOX[(variant || 'n')[0]] || VINE_BOX.n);
+    else if (variant && BAR_BOX[variant]) g = boxGeometry(BAR_BOX[variant]);
     else if (e?.shape === 'cross') g = crossGeometry();
     else if (e?.shape === 'box') g = boxGeometry(e.box);
     else g = boxGeometry([0, 0, 0, 1, 1, 1]);
@@ -165,11 +168,12 @@ export class Viewer {
   setGrid(on) { this.grid.visible = on; this.dirty = true; }
   view(name, dur = 700) {
     const b = this.bounds, c = b.getCenter(new THREE.Vector3()), size = b.getSize(new THREE.Vector3());
-    const span = Math.max(size.x, size.y * 1.1, 20), dist = span / (2 * Math.tan(THREE.MathUtils.degToRad(this.camera.fov / 2))) * 1.15;
+    const span = Math.max(size.x, size.z * (name === 'top' || name === 'iso' ? 1 : 0), size.y * 1.1, 20), dist = span / (2 * Math.tan(THREE.MathUtils.degToRad(this.camera.fov / 2))) * 1.15;
     const tgt = new THREE.Vector3(c.x, size.y * 0.45, c.z);
-    const dirs = { front: [0, 0.12, 1], back: [0, 0.12, -1], left: [-1, 0.12, 0], right: [1, 0.12, 0], top: [0.001, 1, 0.02], iso: [-0.62, 0.42, 1] };
+    const dirs = { front: [0, 0.12, 1], back: [0, 0.12, -1], left: [-1, 0.12, 0], right: [1, 0.12, 0], top: [0.001, 1, 0.02], iso: this.isoDir || [-0.62, 0.42, 1] };
     const d = new THREE.Vector3(...(dirs[name] || dirs.iso)).normalize();
-    const p1 = tgt.clone().add(d.multiplyScalar(name === 'left' || name === 'right' ? Math.max(dist * 0.55, size.z * 3) : dist));
+    const pull = name === 'top' ? 1.45 : name === 'iso' ? 1.2 : 1;
+    const p1 = tgt.clone().add(d.multiplyScalar(name === 'left' || name === 'right' ? Math.max(dist * 0.55, size.z * 3) : dist * pull));
     if (!dur) { this.camera.position.copy(p1); this.controls.target.copy(tgt); this.dirty = true; return; }
     this.tween = { t0: performance.now(), dur, p0: this.camera.position.clone(), p1, q0: this.controls.target.clone(), q1: tgt };
   }

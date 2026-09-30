@@ -30,10 +30,15 @@ export function stateString(key, library) {
   const [base, variant] = key.split('|');
   const id = library[base]?.id ?? (base.includes(':') ? base : 'minecraft:' + base);
   if (base === 'iron_bars') {
-    const h = variant === 'h';
-    return `${id}[east=${h},north=false,south=false,waterlogged=false,west=${h}]`;
+    const h = variant === 'h', z = variant === 'z';
+    return `${id}[east=${h},north=${z},south=${z},waterlogged=false,west=${h}]`;
   }
-  if (base === 'chain') return `${id}[axis=${variant === 'h' ? 'x' : 'y'},waterlogged=false]`;
+  if (base === 'chain') return `${id}[axis=${variant === 'h' ? 'x' : variant === 'z' ? 'z' : 'y'},waterlogged=false]`;
+  if (base === 'vine') {
+    const f = variant || 'n', has = c => f.includes(c);
+    return `${id}[east=${has('e')},north=${has('n')},south=${has('s')},up=false,west=${has('w')}]`;
+  }
+  if (base.endsWith('_leaves')) return `${id}[distance=7,persistent=true,waterlogged=false]`;
   return id;
 }
 
@@ -114,7 +119,8 @@ export async function readSchem(buf) {
     const [id, props = ''] = s.split('[');
     let base = id.replace(/^minecraft:/, '').replace(/^create:/, '');
     if (base === 'air' || base === 'cave_air' || base === 'void_air' || base === 'structure_void') return 'air';
-    if (base === 'iron_bars' || base === 'chain') return base + (/east=true|west=true|axis=x|axis=z/.test(props) ? '|h' : '|v');
+    if (base === 'iron_bars' || base === 'chain') return base + (/east=true|west=true|axis=x/.test(props) ? '|h' : /north=true|south=true|axis=z/.test(props) ? '|z' : '|v');
+    if (base === 'vine') { const f = ['e', 'n', 's', 'w'].filter(c => new RegExp({ e: 'east', n: 'north', s: 'south', w: 'west' }[c] + '=true').test(props)); return 'vine|' + (f.join('') || 'n'); }
     return base;
   };
   const palKey = inv.map(s => { const k = toKey(s); if (!kmap.has(k)) { kmap.set(k, keys.length); keys.push(k); } return kmap.get(k); });

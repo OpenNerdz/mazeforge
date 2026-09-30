@@ -1,4 +1,4 @@
-import { generate, DEFAULTS, PRESETS, LAYOUT_NAMES, BANDS, Rng } from './gen.js';
+import { generate, DEFAULTS, PRESETS, LAYOUT_NAMES, BANDS, Rng, rotateGrid, composeGrids } from './gen.js';
 import { writeSchem, readSchem } from './schem.js';
 import { Viewer } from './viewer.js';
 import { effectivePalette } from './palette.js';
@@ -22,9 +22,11 @@ const viewer = new Viewer($('#view'), library);
 const FONTS = ['Maze Block', 'Impact', 'Arial Black', 'Verdana', 'Georgia', 'Trebuchet MS', 'Courier New', 'DejaVu Sans', 'Liberation Sans', 'monospace', 'serif'];
 const SCHEMA = [
   { id: 'structure', title: 'Structure', ico: '▣', items: [
+    { k: 'piece', type: 'select', label: 'Piece', options: { straight: 'Straight wall', corner: 'Corner (L-shape)' }, help: 'Corner pieces join two walls at a right angle; the outer faces wrap round continuously.' },
+    { k: 'cornerPreview', type: 'toggle', label: 'Show attached walls', when: P => P.piece === 'corner', help: 'Preview the corner with a straight wall on each arm (only the corner is exported).' },
     { k: 'layout', type: 'select', label: 'Layout', options: LAYOUT_NAMES, help: 'The overall massing of the wall.' },
     { k: 'seed', type: 'seed', label: 'Seed', help: 'Same seed + same settings = same wall, every time.' },
-    { k: 'width', type: 'range', label: 'Width', min: 8, max: 96, step: 1, unit: 'blocks' },
+    { k: 'width', type: 'range', label: 'Width / arm length', min: 8, max: 96, step: 1, unit: 'blocks', help: 'For corners: length of each arm, measured on the outside.' },
     { k: 'heightMin', type: 'range', label: 'Min height', min: 16, max: 200, step: 1, unit: 'blocks' },
     { k: 'heightMax', type: 'range', label: 'Max height', min: 16, max: 200, step: 1, unit: 'blocks', help: 'The skyline varies between min and max.' },
     { k: 'thickness', type: 'range', label: 'Thickness', min: 6, max: 48, step: 1, unit: 'blocks' },
@@ -44,6 +46,10 @@ const SCHEMA = [
     { k: 'tierMax', type: 'range', label: 'Tier height max', min: 3, max: 40, step: 1 },
     { k: 'splitChance', type: 'range', label: 'Slab splitting', min: 0, max: 1, step: 0.01, help: 'Chance a tier is split into 2–3 slabs.' },
     { k: 'minSlab', type: 'range', label: 'Min slab width', min: 3, max: 24, step: 1 },
+    { k: 'slabTarget', type: 'range', label: 'Typical slab width', min: 5, max: 40, step: 1, unit: 'blocks', help: 'Wide walls split into more slabs so they never become big flat panels.' },
+    { k: 'bayWidth', type: 'range', label: 'Bay width', min: 8, max: 60, step: 1, unit: 'blocks', help: 'Wide walls are built as independent bays, each with its own depth, joints and skyline.' },
+    { k: 'bayRelief', type: 'range', label: 'Bay relief', min: 0, max: 8, step: 1, unit: 'blocks', help: 'How far whole bays step forward or back from each other.' },
+    { k: 'panelDetail', type: 'range', label: 'Panel detail', min: 0, max: 1, step: 0.01, help: 'Share of big slabs given inset panels, pilaster strips or a formwork grid.' },
     { k: 'ledgeChance', type: 'range', label: 'Ledge caps', min: 0, max: 1, step: 0.01, help: 'Projecting band on top of slabs.' },
     { k: 'jointDepth', type: 'range', label: 'Joint depth', min: 0, max: 3, step: 1 },
     { k: 'grooveDepth', type: 'range', label: 'Groove depth', min: 0, max: 6, step: 1 },
@@ -122,6 +128,22 @@ const SCHEMA = [
     { k: 'rust', type: 'range', label: 'Rust amount', min: 0, max: 2, step: 0.01 },
     { k: 'chips', type: 'range', label: 'Chipped corners', min: 0, max: 1, step: 0.01 },
     { k: 'pockmarks', type: 'range', label: 'Pockmarks', min: 0, max: 0.06, step: 0.001 },
+  ]},
+  { id: 'ivy', title: 'Ivy & vines', ico: '❦', items: [
+    { k: 'ivy', type: 'toggle', label: 'Grow ivy', help: 'Vines, leaf clumps and moss grown onto the finished structure.' },
+    { k: 'ivyAmount', type: 'range', label: 'Hanging growth', min: 0, max: 1, step: 0.01, when: P => P.ivy, help: 'How often ivy takes root on ledges and the wall top and grows down.' },
+    { k: 'ivyLength', type: 'range', label: 'Hanging reach', min: 2, max: 70, step: 1, unit: 'blocks', when: P => P.ivy, help: 'How far hanging strands can grow (they reach further in shade).' },
+    { k: 'ivyWidth', type: 'range', label: 'Clump width', min: 0, max: 12, step: 1, when: P => P.ivy, help: 'Strands per root clump.' },
+    { k: 'ivyClimb', type: 'range', label: 'Climbing from ground', min: 0, max: 1, step: 0.01, when: P => P.ivy },
+    { k: 'ivyClimbHeight', type: 'range', label: 'Climb height', min: 2, max: 70, step: 1, unit: 'blocks', when: P => P.ivy },
+    { k: 'ivyLeaves', type: 'range', label: 'Leaf clumps', min: 0, max: 1, step: 0.01, when: P => P.ivy, help: 'Bushy leaves spilling over ledges above the vines.' },
+    { k: 'ivyMoss', type: 'range', label: 'Moss on ledges', min: 0, max: 1, step: 0.01, when: P => P.ivy },
+    { k: 'ivyBranching', type: 'range', label: 'Branching', min: 0, max: 0.25, step: 0.005, when: P => P.ivy, help: 'How often a strand sends out a thinner side shoot.' },
+    { k: 'ivyWander', type: 'range', label: 'Wander', min: 0, max: 1.5, step: 0.01, when: P => P.ivy, help: 'How much strands drift sideways instead of running straight up or down.' },
+    { k: 'ivyShade', type: 'range', label: 'Shade & damp preference', min: 0, max: 1.5, step: 0.01, when: P => P.ivy, help: 'Higher = ivy crowds into shaded, damp spots (north faces, grooves, under ledges, stained areas) and avoids dry sun.' },
+    { k: 'ivyCluster', type: 'range', label: 'Clustering', min: 2, max: 24, step: 1, when: P => P.ivy, help: 'Bigger = ivy gathers in fewer, larger overgrown areas.' },
+    { k: 'ivyLeafBlock', type: 'select', label: 'Leaf block', when: P => P.ivy, options: { azalea_leaves: 'Azalea (+ flowering)', oak_leaves: 'Oak', dark_oak_leaves: 'Dark oak', jungle_leaves: 'Jungle', spruce_leaves: 'Spruce', mangrove_leaves: 'Mangrove', birch_leaves: 'Birch' } },
+    { k: 'ivyVariation', type: 'range', label: 'Ivy variation', min: 1, max: 999, step: 1, when: P => P.ivy, help: 'Re-rolls the ivy without changing the wall.' },
   ]},
   { id: 'palette', title: 'Block palette', ico: '■', custom: 'palette' },
 ];
@@ -340,10 +362,21 @@ function regenerate() {
       const tiles = +$('#tiles').value;
       const grids = [];
       const palette = effPal();
-      for (let k = 0; k < tiles; k++) grids.push(generate({ ...P, palette, seed: P.seed + k * 17 }));
+      let shownGrids;
+      if (P.piece === 'corner') {
+        const c = generate({ ...P, palette }); grids.push(c);
+        if (P.cornerPreview) {
+          // straight walls on both arms: west of the south-facing arm, and north of the east-facing arm
+          const wall = s => generate({ ...P, palette, piece: 'straight', width: 20, seed: P.seed + s });
+          const a = wall(101), b = rotateGrid(wall(202), 3), L = c.W, D = P.thickness;
+          shownGrids = [composeGrids([{ g: c, x: 0, z: 0 }, { g: a, x: -a.W, z: L - D }, { g: b, x: L - D, z: -b.D }])];
+        }
+      } else for (let k = 0; k < tiles; k++) grids.push(generate({ ...P, palette, seed: P.seed + k * 17 }));
       const ms = performance.now() - t0;
       current = grids[0];
-      const shown = viewer.show(grids, { keepCamera: !firstShow }); firstShow = false;
+      const wasCorner = viewer.isoDir != null, isCorner = P.piece === 'corner';
+      viewer.isoDir = isCorner ? [0.8, 0.5, 0.9] : null;             // corners: look at the outer (south + east) faces
+      const shown = viewer.show(shownGrids || grids, { keepCamera: !firstShow && wasCorner === isCorner }); firstShow = false;
       showStats(current, ms, shown);
     } catch (e) { console.error(e); toast('Generation failed: ' + e.message, 'err'); }
     $('#busy').classList.remove('on');
@@ -453,6 +486,7 @@ function remix() {
     portholes: R.int(0, 2), grilles: R.int(0, 3), hazards: R.int(0, 1), channels: R.int(0, 2), doorways: R.int(0, 1), windows: R.int(0, 2),
     numberText: layout === 'slab' || R.f() < 0.25 ? String(R.int(1, 8)) : '', numberHeight: layout === 'slab' ? 28 : 21,
     streakStrength: R.uniform(0.7, 1.5), cracks: R.int(1, 5), moss: R.uniform(0.5, 1.6), backLayout: 'auto',
+    ivyAmount: R.pick([0.15, 0.35, 0.6, 0.9]), ivyBranching: R.uniform(0.03, 0.12), ivyWander: R.uniform(0.25, 0.8), ivyClimb: R.uniform(0.1, 0.8), ivyLeaves: R.uniform(0.2, 0.9), ivyLength: R.int(10, 40), ivyVariation: R.int(1, 999),
   });
   commit(); syncControls(); regenerate(); toast(`Remixed: ${LAYOUT_NAMES[layout]}`);
 }
@@ -508,4 +542,5 @@ function toast(msg, kind = '') {
 }
 
 buildControls(); presetList(); regenerate();
+window.__studio = { viewer };   // handy for debugging from the console
 setTimeout(() => viewer.view('iso', 0), 60);
