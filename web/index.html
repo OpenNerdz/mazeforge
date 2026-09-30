@@ -11,106 +11,199 @@
 </script>
 </head>
 <body>
-<header class="topbar">
-  <div class="brand"><img src="icon.png" alt=""><div><b>Maze Structure Studio</b><span>Procedural wall designer</span></div></div>
-  <div class="tb-group">
-    <input id="name" class="name-input" spellcheck="false" title="File name used when exporting">
-    <select id="preset" title="Load a preset"></select>
-    <button id="savePreset" class="ghost" title="Save current settings as a preset">Save preset</button>
-    <button id="share" class="ghost" title="Copy a share code or link for this design">Share…</button>
+<!-- icon set: 24px line icons, used as <svg class="i"><use href="#i-name"/></svg> -->
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <defs>
+    <symbol id="i-focus" viewBox="0 0 24 24"><path d="M4 8.5V5a1 1 0 0 1 1-1h3.5M15.5 4H19a1 1 0 0 1 1 1v3.5M20 15.5V19a1 1 0 0 1-1 1h-3.5M8.5 20H5a1 1 0 0 1-1-1v-3.5"/></symbol>
+    <symbol id="i-undo" viewBox="0 0 24 24"><path d="M9 14 4 9l5-5"/><path d="M4 9h10.5a5.5 5.5 0 0 1 0 11H11"/></symbol>
+    <symbol id="i-redo" viewBox="0 0 24 24"><path d="m15 14 5-5-5-5"/><path d="M20 9H9.5a5.5 5.5 0 0 0 0 11H13"/></symbol>
+    <symbol id="i-dice" viewBox="0 0 24 24"><rect x="3.5" y="3.5" width="17" height="17" rx="3.5"/><circle cx="8.5" cy="8.5" r="1.1" fill="currentColor"/><circle cx="15.5" cy="15.5" r="1.1" fill="currentColor"/><circle cx="12" cy="12" r="1.1" fill="currentColor"/><circle cx="15.5" cy="8.5" r="1.1" fill="currentColor"/><circle cx="8.5" cy="15.5" r="1.1" fill="currentColor"/></symbol>
+    <symbol id="i-browse" viewBox="0 0 24 24"><rect x="3.5" y="3.5" width="7" height="7" rx="1.5"/><rect x="13.5" y="3.5" width="7" height="7" rx="1.5"/><rect x="3.5" y="13.5" width="7" height="7" rx="1.5"/><rect x="13.5" y="13.5" width="7" height="7" rx="1.5"/></symbol>
+    <symbol id="i-remix" viewBox="0 0 24 24"><path d="M11 3.5l1.7 4.8 4.8 1.7-4.8 1.7L11 16.5l-1.7-4.8L4.5 10l4.8-1.7z"/><path d="M18 14.5l.8 2.2 2.2.8-2.2.8-.8 2.2-.8-2.2-2.2-.8 2.2-.8z"/></symbol>
+    <symbol id="i-share" viewBox="0 0 24 24"><circle cx="18" cy="5.5" r="2.5"/><circle cx="6" cy="12" r="2.5"/><circle cx="18" cy="18.5" r="2.5"/><path d="m8.2 13.2 7.6 4.1M15.8 6.7l-7.6 4.1"/></symbol>
+    <symbol id="i-more" viewBox="0 0 24 24"><circle cx="5.5" cy="12" r="1.3" fill="currentColor"/><circle cx="12" cy="12" r="1.3" fill="currentColor"/><circle cx="18.5" cy="12" r="1.3" fill="currentColor"/></symbol>
+    <symbol id="i-cube" viewBox="0 0 24 24"><path d="M20.5 7.5 12 3 3.5 7.5v9L12 21l8.5-4.5z"/><path d="M3.5 7.5 12 12l8.5-4.5M12 12v9"/></symbol>
+    <symbol id="i-download" viewBox="0 0 24 24"><path d="M12 3.5v11M7.5 10.5l4.5 4.5 4.5-4.5M4.5 20h15"/></symbol>
+    <symbol id="i-folder" viewBox="0 0 24 24"><path d="M3.5 6.5a1 1 0 0 1 1-1h5l2 2h8a1 1 0 0 1 1 1v9a1 1 0 0 1-1 1h-15a1 1 0 0 1-1-1z"/></symbol>
+    <symbol id="i-stack" viewBox="0 0 24 24"><path d="M12 3.5 3.5 8 12 12.5 20.5 8z"/><path d="m3.5 12 8.5 4.5 8.5-4.5M3.5 16l8.5 4.5 8.5-4.5"/></symbol>
+    <symbol id="i-bookmark" viewBox="0 0 24 24"><path d="M6.5 3.5h11v17L12 16l-5.5 4.5z"/></symbol>
+    <symbol id="i-keyboard" viewBox="0 0 24 24"><rect x="2.5" y="6" width="19" height="12" rx="2"/><path d="M6.5 10h.01M10 10h.01M13.5 10h.01M17 10h.01M7.5 14h9"/></symbol>
+    <symbol id="i-sun" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><path d="M12 2.5v2M12 19.5v2M5.3 5.3l1.4 1.4M17.3 17.3l1.4 1.4M2.5 12h2M19.5 12h2M5.3 18.7l1.4-1.4M17.3 6.7l1.4-1.4"/></symbol>
+    <symbol id="i-grid" viewBox="0 0 24 24"><rect x="3.5" y="3.5" width="17" height="17" rx="2"/><path d="M3.5 9.2h17M3.5 14.8h17M9.2 3.5v17M14.8 3.5v17"/></symbol>
+    <symbol id="i-spin" viewBox="0 0 24 24"><path d="M20.5 12a8.5 8.5 0 1 1-2.8-6.3L20.5 8"/><path d="M20.5 3.5V8H16"/></symbol>
+    <symbol id="i-pin" viewBox="0 0 24 24"><path d="M12 21s-6.5-5.8-6.5-10.5a6.5 6.5 0 0 1 13 0C18.5 15.2 12 21 12 21z"/><circle cx="12" cy="10.5" r="2.3"/></symbol>
+    <symbol id="i-camera" viewBox="0 0 24 24"><path d="M4.5 8h2.8l1.9-2.5h5.6L16.7 8h2.8a1 1 0 0 1 1 1v9.5a1 1 0 0 1-1 1h-15a1 1 0 0 1-1-1V9a1 1 0 0 1 1-1z"/><circle cx="12" cy="13.3" r="3.3"/></symbol>
+    <symbol id="i-tiles" viewBox="0 0 24 24"><rect x="2.5" y="6" width="5.5" height="12" rx="1"/><rect x="9.25" y="6" width="5.5" height="12" rx="1"/><rect x="16" y="6" width="5.5" height="12" rx="1"/></symbol>
+    <symbol id="i-search" viewBox="0 0 24 24"><circle cx="11" cy="11" r="6.5"/><path d="m20 20-4.4-4.4"/></symbol>
+    <symbol id="i-expand" viewBox="0 0 24 24"><path d="m7.5 15 4.5 4.5 4.5-4.5M7.5 9 12 4.5 16.5 9"/></symbol>
+    <symbol id="i-collapse" viewBox="0 0 24 24"><path d="m7.5 19.5 4.5-4.5 4.5 4.5M7.5 4.5 12 9l4.5-4.5"/></symbol>
+    <symbol id="i-x" viewBox="0 0 24 24"><path d="M6.5 6.5l11 11M17.5 6.5l-11 11"/></symbol>
+    <symbol id="i-chev" viewBox="0 0 24 24"><path d="m6.5 9.5 5.5 5.5 5.5-5.5"/></symbol>
+    <symbol id="i-left" viewBox="0 0 24 24"><path d="m14.5 6.5-5.5 5.5 5.5 5.5"/></symbol>
+    <symbol id="i-right" viewBox="0 0 24 24"><path d="m9.5 6.5 5.5 5.5-5.5 5.5"/></symbol>
+    <symbol id="i-copy" viewBox="0 0 24 24"><rect x="8.5" y="8.5" width="12" height="12" rx="2"/><path d="M15.5 8.5v-3a2 2 0 0 0-2-2h-8a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h3"/></symbol>
+    <symbol id="i-skyline" viewBox="0 0 24 24"><path d="M3 20.5h18M4.5 20.5v-9h4v-5h4v8h3.5v-5h3.5v11"/></symbol>
+    <symbol id="i-maze" viewBox="0 0 24 24"><rect x="3.5" y="3.5" width="17" height="17" rx="1.5"/><path d="M8 3.5v9h4.5M3.5 16.5h9V12M16.5 8v12.5M12.5 8h4"/></symbol>
+    <symbol id="i-faces" viewBox="0 0 24 24"><path d="M12 3.5 3.5 8 12 12.5 20.5 8z"/><path d="m3.5 13 8.5 4.5 8.5-4.5"/></symbol>
+    <symbol id="i-sliders" viewBox="0 0 24 24"><path d="M4 6.5h9M17 6.5h3M4 12h3M11 12h9M4 17.5h11M19 17.5h1"/><circle cx="15" cy="6.5" r="2"/><circle cx="9" cy="12" r="2"/><circle cx="17" cy="17.5" r="2"/></symbol>
+    <symbol id="i-back" viewBox="0 0 24 24"><rect x="4.5" y="3.5" width="15" height="17" rx="1.5"/><path d="M9.5 3.5v17"/></symbol>
+    <symbol id="i-base" viewBox="0 0 24 24"><path d="M3 20.5h18M5 20.5v-5.5h14v5.5M5 9.5h14M8.5 15V9.5M12 15V9.5M15.5 15V9.5"/></symbol>
+    <symbol id="i-slabs" viewBox="0 0 24 24"><rect x="3.5" y="3.5" width="7.5" height="8" rx="1"/><rect x="13" y="3.5" width="7.5" height="5" rx="1"/><rect x="13" y="10.5" width="7.5" height="10" rx="1"/><rect x="3.5" y="13.5" width="7.5" height="7" rx="1"/></symbol>
+    <symbol id="i-target" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5"/><circle cx="12" cy="12" r="4.5"/><circle cx="12" cy="12" r=".9" fill="currentColor"/></symbol>
+    <symbol id="i-type" viewBox="0 0 24 24"><path d="M5 7V4.5h14V7M12 4.5v15M9 19.5h6"/></symbol>
+    <symbol id="i-rain" viewBox="0 0 24 24"><path d="M7.5 15a4 4 0 0 1-.6-7.9 5.5 5.5 0 0 1 10.6 1.4A3.3 3.3 0 0 1 17 15"/><path d="m9 17.5-1 3M13 17.5l-1 3M17 17.5l-1 3"/></symbol>
+    <symbol id="i-drop" viewBox="0 0 24 24"><path d="M12 3.5s6 6.4 6 10.8a6 6 0 0 1-12 0C6 9.9 12 3.5 12 3.5z"/></symbol>
+    <symbol id="i-leaf" viewBox="0 0 24 24"><path d="M5 19.5c0-8.7 5-14.5 14.5-14.5 0 9.7-5.8 14.5-14.5 14.5z"/><path d="m5 19.5 8.5-8.5"/></symbol>
+    <symbol id="i-palette" viewBox="0 0 24 24"><path d="M12 3.5a8.5 8.5 0 1 0 0 17c1 0 1.5-.7 1.5-1.4 0-.9-.7-1.3-.7-2.1 0-1 .8-1.7 1.7-1.7h2a4 4 0 0 0 4-4c0-4.4-3.9-7.8-8.5-7.8z"/><circle cx="7.8" cy="11" r="1.1" fill="currentColor"/><circle cx="10.5" cy="7.3" r="1.1" fill="currentColor"/><circle cx="15" cy="7.6" r="1.1" fill="currentColor"/></symbol>
+  </defs>
+</svg>
+
+<header class="topbar" data-fit-max="6">
+  <div class="brand"><img src="icon.png" alt=""><b class="lbl">Maze Structure Studio</b></div>
+  <div class="doc">
+    <input id="name" class="field name" spellcheck="false" data-tip="Design name — also the file name">
+    <select id="preset" class="field extra" data-tip="Start from a preset"></select>
   </div>
-  <div class="tb-group">
-    <button id="undo" class="icon" title="Undo (Ctrl+Z)">↶</button>
-    <button id="redo" class="icon" title="Redo (Ctrl+Shift+Z)">↷</button>
-    <button id="reseed" class="ghost" title="New random seed (R)">🎲 New seed</button>
-    <button id="remix" class="ghost" title="Randomise layout and features (M)">✦ Remix</button>
-    <button id="seeds" class="ghost" title="Browse seeds as thumbnails (B)">▦ Seeds…</button>
+  <div class="group extra">
+    <button id="undo" class="btn icon" data-tip="Undo · Ctrl+Z"><svg class="i"><use href="#i-undo"/></svg></button>
+    <button id="redo" class="btn icon" data-tip="Redo · Ctrl+Shift+Z"><svg class="i"><use href="#i-redo"/></svg></button>
   </div>
-  <div class="tb-group right">
-    <button id="open" class="ghost" title="Open a .schem file to preview">Open .schem</button>
-    <button id="batch" class="ghost" title="Export many variants at once">Batch…</button>
-    <button id="export" class="ghost" title="Download .schem (E)">Download</button>
-    <button id="save" class="primary" title="Save straight into your Minecraft schematics folders (Ctrl+S)">Save to Minecraft</button>
+  <div class="group joined">
+    <button id="reseed" class="btn" data-tip="Same settings, new random seed · R"><svg class="i"><use href="#i-dice"/></svg><span class="lbl">New seed</span></button>
+    <button id="seeds" class="btn extra" data-tip="See 12 seeds side by side and pick one · B"><svg class="i"><use href="#i-browse"/></svg><span class="lbl">Browse</span></button>
+    <button id="remix" class="btn extra" data-tip="Randomise the layout and features too · M"><svg class="i"><use href="#i-remix"/></svg><span class="lbl">Remix</span></button>
+  </div>
+  <div class="group end">
+    <button id="share" class="btn quiet extra" data-tip="Share this design as a code or link"><svg class="i"><use href="#i-share"/></svg><span class="lbl">Share</span></button>
+    <button id="clean" class="btn quiet" data-tip="Clean UI: hide the less-used controls · C"><svg class="i"><use href="#i-focus"/></svg><span class="lbl">Clean</span></button>
+    <div class="menuwrap">
+      <button id="more" class="btn quiet" data-tip="More actions"><svg class="i"><use href="#i-more"/></svg><span class="lbl">More</span></button>
+      <div class="menu" id="moreMenu">
+        <button class="clean-only" data-click="#seeds"><svg class="i"><use href="#i-browse"/></svg>Browse seeds<kbd>B</kbd></button>
+        <button class="clean-only" data-click="#remix"><svg class="i"><use href="#i-remix"/></svg>Remix<kbd>M</kbd></button>
+        <button class="clean-only" data-click="#share"><svg class="i"><use href="#i-share"/></svg>Share…</button>
+        <hr class="clean-only">
+        <button id="savePreset"><svg class="i"><use href="#i-bookmark"/></svg>Save as preset…</button>
+        <button id="open"><svg class="i"><use href="#i-folder"/></svg>Open a .schem file…</button>
+        <button id="batch"><svg class="i"><use href="#i-stack"/></svg>Batch export…</button>
+        <button id="export"><svg class="i"><use href="#i-download"/></svg>Download .schem<kbd>E</kbd></button>
+        <hr>
+        <button id="cleanMenu"><svg class="i"><use href="#i-focus"/></svg>Clean UI<kbd>C</kbd></button>
+        <button id="shortcuts"><svg class="i"><use href="#i-keyboard"/></svg>Keyboard shortcuts<kbd>?</kbd></button>
+      </div>
+    </div>
+    <button id="save" class="btn primary" data-tip="Save straight into your WorldEdit schematics folders · Ctrl+S"><svg class="i"><use href="#i-cube"/></svg>Save<span class="lbl">to Minecraft</span></button>
   </div>
 </header>
 
 <div class="layout">
   <aside class="panel">
-    <div class="search"><input id="filter" placeholder="Search controls…" spellcheck="false"><button id="expandAll" class="icon" title="Expand all sections">⊞</button><button id="collapseAll" class="icon" title="Collapse all sections">⊟</button></div>
+    <div class="panelhead">
+      <nav class="tabs" id="tabs">
+        <button data-t="shape"><svg class="i"><use href="#i-cube"/></svg>Shape</button>
+        <button data-t="detail"><svg class="i"><use href="#i-slabs"/></svg>Detail</button>
+        <button data-t="weather"><svg class="i"><use href="#i-rain"/></svg>Weather</button>
+        <button data-t="blocks"><svg class="i"><use href="#i-palette"/></svg>Blocks</button>
+      </nav>
+      <div class="search">
+        <label class="searchbox"><svg class="i"><use href="#i-search"/></svg><input id="filter" placeholder="Search all settings" spellcheck="false"></label>
+        <button id="expandAll" class="btn icon quiet" data-tip="Expand all sections"><svg class="i"><use href="#i-expand"/></svg></button>
+        <button id="collapseAll" class="btn icon quiet" data-tip="Collapse all sections"><svg class="i"><use href="#i-collapse"/></svg></button>
+      </div>
+      <label class="advrow" data-tip="Show every setting, including the fine-tuning ones"><span>Advanced settings</span><span class="switch"><input type="checkbox" id="advanced"><span></span></span></label>
+    </div>
     <div id="controls"></div>
   </aside>
+
   <main class="stage">
     <canvas id="view"></canvas>
-    <div class="viewbar">
-      <div class="seg" id="views">
-        <button data-v="iso" class="on">3D</button><button data-v="front">Front</button><button data-v="back">Back</button>
-        <button data-v="left">Left</button><button data-v="right">Right</button><button data-v="top">Top</button>
-      </div>
-      <div class="seg">
-        <button id="tShadow" class="on" title="Shadows">☀ Shadows</button>
-        <button id="tGrid" title="Ground grid">▦ Grid</button>
-        <button id="tSpin" title="Auto-rotate">⟳ Spin</button>
-        <button id="tMarker" title="Show where to stand and face for //paste -a">⌖ Paste spot</button>
-        <button id="shot" title="Save a screenshot (P)">⎙ Shot</button>
-      </div>
+    <div class="busy" id="busy"></div>
+    <div class="viewbar top" data-fit-max="3">
+    <div class="glass seg" id="views">
+      <button data-v="iso" class="on" data-tip="3D view · 1"><span class="long">3D</span><span class="short">3D</span></button><button data-v="front" data-tip="Front · 2"><span class="long">Front</span><span class="short">F</span></button><button data-v="back" data-tip="Back · 3"><span class="long">Back</span><span class="short">B</span></button><button data-v="left" data-tip="Left · 4"><span class="long">Left</span><span class="short">L</span></button><button data-v="right" data-tip="Right · 5"><span class="long">Right</span><span class="short">R</span></button><button data-v="top" data-tip="Top · 6"><span class="long">Top</span><span class="short">T</span></button>
     </div>
-    <div class="sunbar">
-      <label>Sun <input type="range" id="sunAz" min="0" max="360" value="320"></label>
-      <label>Height <input type="range" id="sunEl" min="8" max="85" value="40"></label>
-      <label>Tile ×<input type="range" id="tiles" min="1" max="6" value="1"><output id="tilesOut">1</output></label>
+    <div class="glass seg">
+      <button id="tShadow" class="on" data-tip="Shadows"><svg class="i"><use href="#i-sun"/></svg><span class="lbl">Shadows</span></button>
+      <button class="extra" id="tGrid" data-tip="Ground grid"><svg class="i"><use href="#i-grid"/></svg><span class="lbl">Grid</span></button>
+      <button class="extra" id="tSpin" data-tip="Turntable"><svg class="i"><use href="#i-spin"/></svg><span class="lbl">Spin</span></button>
+      <button id="tMarker" data-tip="Paste spot: where to stand and face for //paste -a"><svg class="i"><use href="#i-pin"/></svg><span class="lbl">Paste spot</span></button>
+      <span class="sep extra"></span>
+      <button class="extra" id="shot" data-tip="Save a screenshot · P"><svg class="i"><use href="#i-camera"/></svg><span class="lbl">Shot</span></button>
     </div>
-    <div class="stats" id="stats"></div>
-    <div class="busy" id="busy">Generating…</div>
-    <div class="banner hidden" id="banner"><span id="bannerText"></span><button id="bannerClose" class="ghost">Back to designer</button></div>
+    </div>
+    <div class="viewbar bottom" data-fit-max="3">
+    <div class="glass scene extra">
+      <label data-tip="Sun direction"><span class="lbl">Sun</span><input type="range" id="sunAz" min="0" max="360" value="320"></label>
+      <label data-tip="Sun height"><span class="lbl">Height</span><input type="range" id="sunEl" min="8" max="85" value="40"></label>
+      <span class="sep"></span>
+      <label data-tip="Preview straight walls side by side, each with its own seed"><span class="lbl">Tiles</span><input type="range" id="tiles" min="1" max="6" value="1"><output id="tilesOut">1</output></label>
+    </div>
+    <div class="glass stats" id="stats"></div>
+    </div>
+    <div class="overlay top-center banner hidden" id="banner"><span id="bannerText"></span><button id="bannerClose" class="btn">Back to designer</button></div>
   </main>
 </div>
 
 <dialog id="dlgSave">
   <form method="dialog">
-    <h3>Save to Minecraft</h3>
-    <p class="muted">WorldEdit schematics folders found on this PC:</p>
+    <header><h3>Save to Minecraft</h3><button class="btn icon quiet" value="cancel" data-tip="Close"><svg class="i"><use href="#i-x"/></svg></button></header>
+    <p class="lead">WorldEdit schematics folders found on this PC</p>
     <div id="targets" class="targets"></div>
-    <label class="row">Subfolder <input id="subfolder" value="studio" spellcheck="false"></label>
-    <label class="row check"><input type="checkbox" id="overwrite"> Overwrite files with the same name</label>
-    <label class="row check" id="chunkRow"><input type="checkbox" id="chunked"> Split into chunks of <input type="number" id="chunkSize" value="64" min="16" max="256" style="width:70px"> blocks</label>
-    <p class="muted small">In-game: <code id="loadHint"></code></p>
-    <div class="actions"><button value="cancel" class="ghost">Cancel</button><button id="doSave" value="ok" class="primary">Save</button></div>
+    <label class="field-row">Subfolder <input id="subfolder" class="field" value="studio" spellcheck="false"></label>
+    <label class="check"><input type="checkbox" id="overwrite"> Overwrite files with the same name</label>
+    <label class="check" id="chunkRow"><input type="checkbox" id="chunked"> Split into chunks of <input type="number" id="chunkSize" class="field tiny" value="64" min="16" max="256"> blocks</label>
+    <p class="hint"><code id="loadHint"></code></p>
+    <footer><button value="cancel" class="btn">Cancel</button><button id="doSave" value="ok" class="btn primary">Save</button></footer>
   </form>
 </dialog>
 
 <dialog id="dlgBatch">
   <form method="dialog">
-    <h3>Batch export</h3>
-    <p class="muted">Generate several variants of the current design, each with its own seed.</p>
-    <label class="row">Variants <input type="number" id="bCount" min="1" max="100" value="6"></label>
-    <label class="row">Start seed <input type="number" id="bSeed"></label>
-    <label class="row">Name pattern <input id="bPattern" value="{name}_{n}" spellcheck="false"></label>
-    <label class="row check"><input type="checkbox" id="bNumbers"> Number them (lettering = 1, 2, 3…)</label>
-    <p class="muted small">Saves to the folders selected in “Save to Minecraft”.</p>
+    <header><h3>Batch export</h3><button class="btn icon quiet" value="cancel" data-tip="Close"><svg class="i"><use href="#i-x"/></svg></button></header>
+    <p class="lead">Several variants of the current design, each with its own seed. Saved to the folders chosen in Save to Minecraft.</p>
+    <label class="field-row">Variants <input type="number" id="bCount" class="field" min="1" max="100" value="6"></label>
+    <label class="field-row">Start seed <input type="number" id="bSeed" class="field"></label>
+    <label class="field-row">Name pattern <input id="bPattern" class="field" value="{name}_{n}" spellcheck="false"></label>
+    <label class="check"><input type="checkbox" id="bNumbers"> Number them (lettering 1, 2, 3…)</label>
     <div class="progress"><div id="bBar"></div></div>
-    <div class="actions"><button value="cancel" class="ghost">Close</button><button id="doBatch" value="ok" class="primary">Export</button></div>
+    <footer><button value="cancel" class="btn">Close</button><button id="doBatch" value="ok" class="btn primary">Export</button></footer>
   </form>
 </dialog>
 
 <dialog id="dlgSeeds" class="wide">
   <form method="dialog">
-    <h3>Seed browser</h3>
-    <p class="muted">Same settings, different seeds. Click one to use it.</p>
+    <header><h3>Browse seeds</h3><button class="btn icon quiet" value="cancel" data-tip="Close"><svg class="i"><use href="#i-x"/></svg></button></header>
+    <p class="lead">Same settings, different seeds. Click one to use it.</p>
     <div id="seedGrid" class="seedgrid"></div>
-    <div class="actions"><button value="cancel" class="ghost">Close</button><button id="seedMore" class="primary">Next 12</button></div>
+    <footer><button value="cancel" class="btn">Close</button><button id="seedMore" class="btn primary">Next 12</button></footer>
   </form>
 </dialog>
+
 <dialog id="dlgShare">
   <form method="dialog">
-    <h3>Share design</h3>
-    <p class="muted">Everything that makes this design, in one code. Paste it back here (or open the link) to get the exact same wall.</p>
-    <label class="row">Code <input id="shareCode" readonly spellcheck="false"></label>
-    <label class="row">Link <input id="shareLink" readonly spellcheck="false"></label>
-    <div class="actions" style="justify-content:flex-start"><button id="copyCode" class="ghost">Copy code</button><button id="copyLink" class="ghost">Copy link</button></div>
-    <label class="row">Load a code <input id="shareIn" placeholder="MSS1.…" spellcheck="false"></label>
-    <div class="actions"><button value="cancel" class="ghost">Close</button><button id="loadShare" class="primary">Load</button></div>
+    <header><h3>Share design</h3><button class="btn icon quiet" value="cancel" data-tip="Close"><svg class="i"><use href="#i-x"/></svg></button></header>
+    <p class="lead">Every setting in one code. Paste it back here, or open the link, to get exactly the same design.</p>
+    <div class="copyrow"><input id="shareCode" class="field mono" readonly spellcheck="false"><button id="copyCode" class="btn"><svg class="i"><use href="#i-copy"/></svg>Code</button></div>
+    <div class="copyrow"><input id="shareLink" class="field mono" readonly spellcheck="false"><button id="copyLink" class="btn"><svg class="i"><use href="#i-copy"/></svg>Link</button></div>
+    <p class="lead sub">Load a design</p>
+    <div class="copyrow"><input id="shareIn" class="field mono" placeholder="MSS1.…" spellcheck="false"><button id="loadShare" class="btn primary">Load</button></div>
   </form>
 </dialog>
+
+<dialog id="dlgKeys">
+  <form method="dialog">
+    <header><h3>Keyboard shortcuts</h3><button class="btn icon quiet" value="cancel" data-tip="Close"><svg class="i"><use href="#i-x"/></svg></button></header>
+    <div class="keys">
+      <span><kbd>R</kbd></span><span>New seed</span><span><kbd>B</kbd></span><span>Browse seeds</span>
+      <span><kbd>M</kbd></span><span>Remix</span><span><kbd>E</kbd></span><span>Download .schem</span>
+      <span><kbd>1</kbd>–<kbd>6</kbd></span><span>Camera views</span><span><kbd>P</kbd></span><span>Screenshot</span>
+      <span><kbd>C</kbd></span><span>Clean UI</span><span><kbd>?</kbd></span><span>This list</span>
+      <span><kbd>Ctrl</kbd><kbd>S</kbd></span><span>Save to Minecraft</span><span><kbd>Ctrl</kbd><kbd>Z</kbd></span><span>Undo · add Shift to redo</span>
+    </div>
+    <p class="hint">Double-click a slider to reset it. An orange dot marks a setting changed from its default.</p>
+  </form>
+</dialog>
+
 <input type="file" id="fileIn" accept=".schem" hidden>
 <div id="toasts"></div>
 <script type="module" src="app.js"></script>

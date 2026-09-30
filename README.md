@@ -6,6 +6,18 @@ Design, preview and export Maze Runner-style wall structures for Minecraft (Worl
 - App menu → **Maze Structure Studio**, or run `./start.sh` (opens in your browser at http://127.0.0.1:8765).
 - To stop the background server: right-click the app entry → *Stop Studio server*.
 
+## Layout of the app
+- **Top bar:** design name and presets · undo/redo · *New seed*, *Browse* (12 seeds at once) and *Remix* ·
+  *Share*, *More* (save preset, open .schem, batch export, download, shortcuts) and **Save to Minecraft**.
+- **Left panel:** four tabs — **Shape**, **Detail**, **Weather**, **Blocks**. Only the main settings show at first;
+  each section has a *+ N more settings* link, or turn on **Advanced settings** to see everything.
+  Hover a **?** for help. The search box looks through every tab.
+- **Details card** (bottom right, click to open): paste commands with copy buttons and the block list —
+  click a block to show only that block in 3D; hover for stack counts; *Copy list* for survival builds.
+- **Clean UI** (top bar, or press **C**) hides the less-used controls — presets, undo, Browse/Remix/Share
+  (still in *More*), help icons, advanced settings and the viewport extras.
+- Bars adapt to the window: labels shorten, then hide, then wrap, so nothing overlaps on small screens.
+
 ## Workflow
 1. Pick a **preset** or a **layout**, then tweak any control — the 3D preview updates instantly.
 2. **New seed** (R) or **Remix** (M) for fresh variations; **Tile ×** previews sections side by side.
@@ -63,7 +75,7 @@ in dry sun; leafy mats form where it is densest and moss gathers on the ledges i
 from the vine above it) and leaves are exported as persistent, so nothing decays or drops after pasting.
 
 ## Shortcuts
-R new seed · M remix · B seed browser · E download · P screenshot · 1–6 camera views · Ctrl+Z / Ctrl+Shift+Z undo/redo · Ctrl+S save
+R new seed · M remix · B seed browser · C clean UI · ? shortcuts · E download · P screenshot · 1–6 camera views · Ctrl+Z / Ctrl+Shift+Z undo/redo · Ctrl+S save
 Double-click a slider to reset it. Orange dots mark settings changed from default.
 
 ## Files

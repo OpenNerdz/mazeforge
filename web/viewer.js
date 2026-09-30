@@ -157,14 +157,14 @@ export class Viewer {
       s.set(1, 1, 1);
       for (let i = 0; i < n; i++) { p.set(arr[i * 3], arr[i * 3 + 1], arr[i * 3 + 2]); m4.compose(p, q, s); mesh.setMatrixAt(i, m4); }
       if (this.library[k.split('|')[0]]?.alpha === 'blend') mesh.renderOrder = 1;
-      mesh.castShadow = true; mesh.receiveShadow = true;
+      mesh.castShadow = true; mesh.receiveShadow = true; mesh.userData.block = k.split('|')[0];
       this.group.add(mesh); count += n;
     }
     this.bounds.set(new THREE.Vector3(-totalW / 2, 0, -maxD / 2), new THREE.Vector3(totalW / 2, maxH, maxD / 2));
     this.markerAt = marker && [marker[0] - totalW / 2, marker[1] - grids[0].D / 2];
     if (this.markerAt) this.marker.position.set(this.markerAt[0], 0, this.markerAt[1]);
     this.marker.visible = !!this.markerAt && this.showMarker;
-    this.fitShadow();
+    this.fitShadow(); this.isolate(this.isolated);
     if (!keepCamera) this.view('iso', 0);
     this.dirty = true;
     return count;
@@ -180,6 +180,12 @@ export class Viewer {
   setSun(az, el) { this.sunAz = az; this.sunEl = el; this.fitShadow(); }
   setShadows(on) { this.renderer.shadowMap.enabled = on; this.sun.castShadow = on; this.scene.traverse(o => { if (o.material) o.material.needsUpdate = true; }); this.dirty = true; }
   setGrid(on) { this.grid.visible = on; this.dirty = true; }
+  // show only one block type (null = everything)
+  isolate(block) {
+    this.isolated = block || null;
+    for (const m of this.group.children) m.visible = !this.isolated || m.userData.block === this.isolated;
+    this.dirty = true;
+  }
   setMarker(on) { this.showMarker = on; this.marker.visible = on && !!this.markerAt; this.dirty = true; }
   view(name, dur = 700) {
     const b = this.bounds, c = b.getCenter(new THREE.Vector3()), size = b.getSize(new THREE.Vector3());
