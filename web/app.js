@@ -15,7 +15,7 @@ const nice = k => k.replace(/\|.*/, '').replace(/_/g, ' ').replace(/\b\w/g, c =>
 const tex = k => { const e = library[k.split('|')[0]]; return e ? `textures/${e.icon}` : ''; };
 
 let P = Object.assign(clone(DEFAULTS), LS.get('current', {}));
-P.palette = Object.assign(clone(DEFAULTS.palette), P.palette || {}); P.roleLock ||= {};
+P.palette = Object.assign(clone(DEFAULTS.palette), P.palette || {}); P.roleLock ||= {}; P.faceOverrides ||= {};
 const effPal = () => effectivePalette(P, library).palette;
 const viewer = new Viewer($('#view'), library);
 
@@ -30,7 +30,12 @@ const SCHEMA = [
     { k: 'width', type: 'range', label: 'Width / arm length', min: 8, max: 96, step: 1, unit: 'blocks', when: P => P.piece !== 'maze', help: 'For corners and junctions: overall size, measured on the outside.' },
     { k: 'heightMin', type: 'range', label: 'Min height', min: 16, max: 200, step: 1, unit: 'blocks' },
     { k: 'heightMax', type: 'range', label: 'Max height', min: 16, max: 200, step: 1, unit: 'blocks', help: 'The skyline varies between min and max.' },
+    { k: 'skylineRough', type: 'range', label: 'Skyline roughness', min: 0, max: 1, step: 0.01, help: 'Each top slab drops by its own amount, so the top steps up and down instead of running level.' },
+    { k: 'skylineSlope', type: 'range', label: 'Skyline slope', min: -1, max: 1, step: 0.01, help: 'Leans the whole skyline down to the left (−) or right (+), in steps that follow the slabs.' },
+    { k: 'ruin', type: 'range', label: 'Broken tops', min: 0, max: 1, step: 0.01, help: 'Knocks ragged chunks out of the wall top, mostly at its edges. Rain and ivy follow the broken shape.' },
     { k: 'thickness', type: 'range', label: 'Thickness', min: 6, max: 48, step: 1, unit: 'blocks', when: P => P.piece !== 'maze' },
+    { k: 'seamMatch', type: 'toggle', label: 'Seam matching', when: P => P.piece === 'straight', help: 'Both ends of every wall get the same joint profile and height, so walls with different seeds line up where they meet. Try Tile × to see.' },
+    { k: 'seamPattern', type: 'range', label: 'Seam pattern', min: 0, max: 50, step: 1, when: P => P.piece === 'straight' && P.seamMatch, help: 'Use the same pattern number for every wall in one run.' },
   ]},
   { id: 'maze', title: 'Maze', ico: '⌗', items: [
     { k: '_mazeNote', type: 'note', label: 'Set Piece to “Whole maze” to generate a complete maze.', when: P => P.piece !== 'maze' },
@@ -51,6 +56,7 @@ const SCHEMA = [
     { k: 'endDetail', type: 'toggle', label: 'End-face detail', help: 'Give the two ends their own slab design (joints line up with the front). Off = flat but weathered.' },
     { k: 'endRelief', type: 'range', label: 'End relief', min: 0, max: 5, step: 1, unit: 'blocks', when: P => P.endDetail, help: 'How far the end-face slabs step in and out.' },
   ]},
+  { id: 'faces', title: 'Faces', ico: '◰', custom: 'faces' },
   { id: 'massing', title: 'Massing & relief', ico: '▤', items: [
     { k: 'reliefMax', type: 'range', label: 'Relief depth', min: 0, max: 10, step: 1, unit: 'blocks', help: 'How far slabs step in and out.' },
     { k: 'tierMin', type: 'range', label: 'Tier height min', min: 3, max: 40, step: 1 },
@@ -148,6 +154,7 @@ const SCHEMA = [
   ]},
   { id: 'ivy', title: 'Ivy & vines', ico: '❦', items: [
     { k: 'ivy', type: 'toggle', label: 'Grow ivy', help: 'Vines, leaf clumps and moss grown onto the finished structure.' },
+    { k: 'ivyOvergrowth', type: 'range', label: 'Overgrowth', min: 0, max: 1, step: 0.01, when: P => P.ivy, help: 'Master control: more strands, longer reach. 1 = heavily overgrown.' },
     { k: 'ivyAmount', type: 'range', label: 'Hanging growth', min: 0, max: 1, step: 0.01, when: P => P.ivy, help: 'How often ivy takes root on ledges and the wall top and grows down.' },
     { k: 'ivyLength', type: 'range', label: 'Hanging reach', min: 2, max: 70, step: 1, unit: 'blocks', when: P => P.ivy, help: 'How far hanging strands can grow (they reach further in shade).' },
     { k: 'ivyWidth', type: 'range', label: 'Clump width', min: 0, max: 12, step: 1, when: P => P.ivy, help: 'Strands per root clump.' },
@@ -158,6 +165,7 @@ const SCHEMA = [
     { k: 'ivyBranching', type: 'range', label: 'Branching', min: 0, max: 0.25, step: 0.005, when: P => P.ivy, help: 'How often a strand sends out a thinner side shoot.' },
     { k: 'ivyWander', type: 'range', label: 'Wander', min: 0, max: 1.5, step: 0.01, when: P => P.ivy, help: 'How much strands drift sideways instead of running straight up or down.' },
     { k: 'ivyShade', type: 'range', label: 'Shade & damp preference', min: 0, max: 1.5, step: 0.01, when: P => P.ivy, help: 'Higher = ivy crowds into shaded, damp spots (north faces, grooves, under ledges, stained areas) and avoids dry sun.' },
+    { k: 'ivyDryShade', type: 'range', label: 'Dry-shade growth', min: 0, max: 1, step: 0.01, when: P => P.ivy, help: 'Lets ivy take hold on dry but shaded walls too, not only where rain keeps them damp.' },
     { k: 'ivyCluster', type: 'range', label: 'Clustering', min: 2, max: 24, step: 1, when: P => P.ivy, help: 'Bigger = ivy gathers in fewer, larger overgrown areas.' },
     { k: 'ivyLeafBlock', type: 'select', label: 'Leaf block', when: P => P.ivy, options: { azalea_leaves: 'Azalea (+ flowering)', oak_leaves: 'Oak', dark_oak_leaves: 'Dark oak', jungle_leaves: 'Jungle', spruce_leaves: 'Spruce', mangrove_leaves: 'Mangrove', birch_leaves: 'Birch' } },
     { k: 'ivyVariation', type: 'range', label: 'Ivy variation', min: 1, max: 999, step: 1, when: P => P.ivy, help: 'Re-rolls the ivy without changing the wall.' },
@@ -185,11 +193,13 @@ function buildControls() {
     });
     el.querySelector('.reset').addEventListener('click', () => {
       if (sec.custom === 'palette') { P.palette = clone(DEFAULTS.palette); for (const k of ['autoPalette', 'autoRoles', 'autoContrast', 'autoSpread', 'autoSatMax', 'roleLock', 'autoBlocks']) P[k] = clone(DEFAULTS[k]); }
+      else if (sec.custom === 'faces') P.faceOverrides = {};
       else for (const it of sec.items) if (it.k in DEFAULTS && it.k !== 'seed') P[it.k] = clone(DEFAULTS[it.k]);
       commit(); syncControls(); regenerate();
     });
     const body = el.querySelector('.sec-b');
     if (sec.custom === 'palette') buildPalette(body);
+    else if (sec.custom === 'faces') { facesEl = body; renderFaces(); }
     else for (const it of sec.items) body.appendChild(makeCtl(it));
     root.appendChild(el);
   }
@@ -215,7 +225,7 @@ function makeCtl(it) {
   } else if (it.type === 'select') {
     d.innerHTML = `<label>${it.label}</label><select>${Object.entries(it.options).map(([v, t]) => `<option value="${v}">${t}</option>`).join('')}</select>${help}`;
     const s = d.querySelector('select');
-    s.addEventListener('change', () => { P[it.k] = s.value; if (it.k === 'layout' && s.value === 'beam' && P.width < 30) P.width = 40; commit(); syncControls(); regenerate(); });
+    s.addEventListener('change', () => { P[it.k] = s.value; if (it.k === 'piece') P.faceOverrides = {}; if (it.k === 'layout' && s.value === 'beam' && P.width < 30) P.width = 40; commit(); syncControls(); regenerate(); });
     ctlEls.set(it.k, { paint: () => { s.value = P[it.k]; mark(d, it.k); }, it, el: d });
   } else if (it.type === 'text') {
     d.innerHTML = `<label>${it.label}</label><input type="text" maxlength="6" spellcheck="false">${help}`;
@@ -357,6 +367,30 @@ function pickBlock(anchor, cb) {
   setTimeout(() => document.addEventListener('mousedown', function h(e) { if (!p.contains(e.target)) { p.remove(); document.removeEventListener('mousedown', h); } }), 0);
 }
 
+// ------------------------------------------------------------------ faces: per-face layout / seed
+let facesEl = null, faceList = [];
+const DIRNAME = { s: 'south', e: 'east', n: 'north', w: 'west' };
+function renderFaces() {
+  if (!facesEl) return;
+  facesEl.innerHTML = '';
+  if (P.piece === 'maze') { facesEl.innerHTML = '<div class="help" style="margin:0">A whole maze has too many faces to set one by one — use Remix or the seed.</div>'; return; }
+  if (!faceList.length) return;
+  facesEl.insertAdjacentHTML('beforeend', '<div class="help" style="margin:0 0 6px">Give one face its own layout or variation without changing the others.</div>');
+  const opts = { '': 'Auto', ...LAYOUT_NAMES };
+  faceList.forEach((f, n) => {
+    const ov = P.faceOverrides[f.i] || {}, r = document.createElement('div');
+    r.className = 'role face' + (ov.layout || ov.seed ? ' changed' : ''); r.dataset.search = `face ${DIRNAME[f.dir]} layout seed`;
+    r.innerHTML = `<label>${f.primary ? 'Front' : 'Face ' + (n + 1)} <span style="color:var(--faint)">${DIRNAME[f.dir]} · ${f.len}</span></label>
+      <div class="facectl"><select>${Object.entries(opts).map(([v, t]) => `<option value="${v}">${t}</option>`).join('')}</select><button title="Previous variation">‹</button><output>${ov.seed | 0}</output><button title="Next variation">›</button></div>`;
+    const sel = r.querySelector('select'), [prev, next] = r.querySelectorAll('button');
+    sel.value = ov.layout || '';
+    const set = o => { const v = { ...ov, ...o }; if (!v.layout) delete v.layout; if (!v.seed) delete v.seed; P.faceOverrides = { ...P.faceOverrides, [f.i]: v }; if (!Object.keys(v).length) delete P.faceOverrides[f.i]; commit(); regenerate(); };
+    sel.onchange = () => set({ layout: sel.value });
+    prev.onclick = () => set({ seed: (ov.seed | 0) - 1 }); next.onclick = () => set({ seed: (ov.seed | 0) + 1 });
+    facesEl.appendChild(r);
+  });
+}
+
 // ------------------------------------------------------------------ history
 let hist = [JSON.stringify(P)], hpos = 0;
 function commit() {
@@ -365,7 +399,7 @@ function commit() {
   hist = hist.slice(0, hpos + 1); hist.push(s); if (hist.length > 150) hist.shift(); hpos = hist.length - 1;
   LS.set('current', P); updateUndo();
 }
-function undo(d) { const n = hpos + d; if (n < 0 || n >= hist.length) return; hpos = n; P = JSON.parse(hist[hpos]); LS.set('current', P); syncControls(); regenerate(); }
+function undo(d) { const n = hpos + d; if (n < 0 || n >= hist.length) return; hpos = n; P = JSON.parse(hist[hpos]); P.faceOverrides ||= {}; LS.set('current', P); syncControls(); regenerate(); }
 function updateUndo() { $('#undo').disabled = hpos <= 0; $('#redo').disabled = hpos >= hist.length - 1; }
 
 // ------------------------------------------------------------------ generation
@@ -377,8 +411,11 @@ function show(scene, ms) {
   current = scene.design;
   const corner = P.piece === 'corner', sameKind = (viewer.isoDir != null) === corner;
   viewer.isoDir = corner ? [0.8, 0.5, 0.9] : null;                    // corners: look at the outer (south + east) faces
-  const shown = viewer.show(scene.shown, { keepCamera: !firstShow && sameKind }); firstShow = false;
+  const o = scene.origin || [0, 0];
+  const shown = viewer.show(scene.shown, { keepCamera: !firstShow && sameKind, marker: [o[0], o[1] + current.D] }); firstShow = false;
   showStats(current, ms, shown);
+  const fl = JSON.stringify(current.faceList || []);
+  if (fl !== JSON.stringify(faceList)) { faceList = current.faceList || []; renderFaces(); }
   $('#busy').classList.remove('on');
 }
 if (worker) worker.onmessage = ({ data }) => {
@@ -396,15 +433,26 @@ function regenerate() {
     catch (e) { console.error(e); toast('Generation failed: ' + e.message, 'err'); $('#busy').classList.remove('on'); }
   }, 30);
 }
+const stackText = n => { const st = Math.floor(n / 64), r = n % 64, sh = n / 1728; return sh >= 1 ? `${sh.toFixed(1)} shulkers` : st ? `${st} st${r ? ' + ' + r : ''}` : `${n}`; };
+function materialList(g) {
+  const counts = new Map();
+  for (let i = 0; i < g.data.length; i++) { const v = g.data[i]; if (v) { const k = g.keys[v].split('|')[0]; counts.set(k, (counts.get(k) || 0) + 1); } }
+  return [...counts].sort((a, b) => b[1] - a[1]);
+}
 function showStats(g, ms, shown) {
-  const counts = new Map(); let total = 0;
-  for (let i = 0; i < g.data.length; i++) { const v = g.data[i]; if (v) { const k = g.keys[v].split('|')[0]; counts.set(k, (counts.get(k) || 0) + 1); total++; } }
-  const rows = [...counts].sort((a, b) => b[1] - a[1]), max = rows[0]?.[1] || 1;
+  const rows = materialList(g), max = rows[0]?.[1] || 1, total = rows.reduce((a, r) => a + r[1], 0), counts = { size: rows.length };
+  const sf = safeName(LS.get('subfolder', 'studio'));
   $('#stats').innerHTML = `<h4>Structure</h4>
     <div class="kv"><div><b>${g.W}</b><span>wide</span></div><div><b>${g.H}</b><span>tall</span></div><div><b>${g.D}</b><span>thick</span></div>
     <div><b>${total.toLocaleString()}</b><span>blocks</span></div><div><b>${counts.size}</b><span>types</span></div><div><b>${ms < 1000 ? ms.toFixed(0) + 'ms' : (ms / 1000).toFixed(1) + 's'}</b><span>build</span></div></div>
     <div class="help" style="color:var(--muted);margin:-4px 0 10px">${g.faces ? `${g.faces} designed faces` : ''}${g.backLayout ? ` · other faces e.g. ${LAYOUT_NAMES[g.backLayout] || g.backLayout}` : ''}</div>
-    <h4>Blocks</h4><div class="bom">${rows.map(([k, n]) => `<div><img src="${tex(k)}" alt=""><span>${nice(k)}</span><i>${n.toLocaleString()}</i><div class="bar"><b style="width:${n / max * 100}%"></b></div></div>`).join('')}</div>`;
+    ${viewing ? '' : `<div class="pasteguide"><b>To paste</b> stand on the orange marker facing north, then<br><code>//schem load ${sf ? sf + '/' : ''}${safeName(P.name)}</code> <code>//paste -a</code></div>`}
+    <h4>Blocks <button class="mini" id="copyBom" title="Copy the block list (with stacks) for a survival build">Copy list</button></h4>
+    <div class="bom">${rows.map(([k, n]) => `<div title="${stackText(n)}"><img src="${tex(k)}" alt=""><span>${nice(k)}</span><i>${n.toLocaleString()}<small>${n >= 64 ? stackText(n) : ''}</small></i><div class="bar"><b style="width:${n / max * 100}%"></b></div></div>`).join('')}</div>`;
+  $('#copyBom').onclick = () => {
+    const txt = `${P.name} — ${g.W}×${g.H}×${g.D}, ${total.toLocaleString()} blocks\n` + rows.map(([k, n]) => `${String(n).padStart(7)}  ${nice(k).padEnd(28)} ${n >= 64 ? stackText(n) : ''}`).join('\n');
+    navigator.clipboard.writeText(txt).then(() => toast('Block list copied', 'ok'), () => toast('Could not copy', 'err'));
+  };
 }
 
 // ------------------------------------------------------------------ export & save
@@ -429,17 +477,44 @@ $('#export').onclick = async () => { if (!current) return; download(await writeS
 $('#save').onclick = async () => {
   await loadTargets(); $('#subfolder').value = LS.get('subfolder', 'studio'); updateHint(); $('#dlgSave').showModal();
 };
-const updateHint = () => { const sf = safeName($('#subfolder').value); $('#loadHint').textContent = `//schem load ${sf ? sf + '/' : ''}${safeName(P.name)}`; };
-$('#subfolder').oninput = updateHint;
+// big designs split into chunks; every chunk keeps its place relative to the same standing spot,
+// so pasting them all from the orange marker rebuilds the whole thing
+function chunks(g, size) {
+  const out = [], nx = Math.ceil(g.W / size), nz = Math.ceil(g.D / size);
+  for (let cz = 0; cz < nz; cz++) for (let cx = 0; cx < nx; cx++) {
+    const x0 = cx * size, z0 = cz * size, W = Math.min(size, g.W - x0), D = Math.min(size, g.D - z0), H = g.H;
+    const data = new Uint16Array(W * H * D);
+    for (let y = 0; y < H; y++) for (let z = 0; z < D; z++) for (let x = 0; x < W; x++) data[(y * D + z) * W + x] = g.data[(y * g.D + z0 + z) * g.W + x0 + x];
+    if (!data.some(v => v)) continue;
+    out.push({ g: { W, H, D, data, keys: g.keys }, off: [x0, 0, z0 - g.D], name: `${P.name}_r${cz + 1}c${cx + 1}` });
+  }
+  return out;
+}
+const updateHint = () => {
+  const sf = safeName($('#subfolder').value), pre = sf ? sf + '/' : '', size = Math.max(16, +$('#chunkSize').value | 0);
+  const big = current && Math.max(current.W, current.D) > 64;
+  $('#chunkRow').classList.toggle('hidden', !current); if (big && !$('#chunked').dataset.touched) $('#chunked').checked = true;
+  if ($('#chunked').checked && current) {
+    const n = chunks(current, size).length;
+    $('#loadHint').textContent = `${n} files: ${pre}${safeName(P.name)}_r1c1 … — stand on the marker, then for each: //schem load <file> and //paste -a (same spot every time)`;
+  } else $('#loadHint').textContent = `//schem load ${pre}${safeName(P.name)} then //paste -a`;
+};
+$('#subfolder').oninput = updateHint; $('#chunkSize').oninput = updateHint;
+$('#chunked').onchange = () => { $('#chunked').dataset.touched = 1; updateHint(); };
 $('#doSave').onclick = async e => {
   e.preventDefault();
   LS.set('targets', chosenTargets()); LS.set('subfolder', $('#subfolder').value);
   if (!chosenTargets().length) return toast('Pick at least one folder', 'err');
   try {
-    const res = await saveBytes(await writeSchem(current, library), P.name);
-    const ok = res.filter(r => r.ok).length, bad = res.filter(r => !r.ok);
+    const parts = $('#chunked').checked ? chunks(current, Math.max(16, +$('#chunkSize').value | 0)) : [{ g: current, off: [0, 0, -current.D], name: P.name }];
+    let ok = 0, bad = [];
+    for (const c of parts) {
+      const res = await saveBytes(await writeSchem(c.g, library, c.off), c.name);
+      ok += res.every(r => r.ok) ? 1 : 0; bad.push(...res.filter(r => !r.ok));
+    }
     $('#dlgSave').close();
-    toast(bad.length ? `Saved to ${ok}, failed ${bad.length}: ${bad[0].error}` : `Saved ${safeName(P.name)}.schem to ${ok} folder${ok > 1 ? 's' : ''}`, bad.length ? 'err' : 'ok');
+    const what = parts.length > 1 ? `${parts.length} chunks` : `${safeName(P.name)}.schem`;
+    toast(bad.length ? `Saved ${ok}/${parts.length}, failed: ${bad[0].error}` : `Saved ${what}`, bad.length ? 'err' : 'ok');
   } catch (err) { toast('Save failed: ' + err.message, 'err'); }
 };
 $('#batch').onclick = async () => { await loadTargets(); $('#bSeed').value = P.seed; $('#bBar').style.width = '0'; $('#dlgBatch').showModal(); };
@@ -456,6 +531,35 @@ $('#doBatch').onclick = async e => {
     await new Promise(r => setTimeout(r, 0));
   }
   toast(`Batch done: ${ok}/${n} saved`, ok === n ? 'ok' : 'err');
+};
+
+// ------------------------------------------------------------------ share codes
+// settings that differ from the defaults, deflated and base64url-encoded: "MSS1.<data>"
+const b64url = u8 => b64(u8).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+const unb64url = s => Uint8Array.from(atob(s.replace(/-/g, '+').replace(/_/g, '/')), c => c.charCodeAt(0));
+const pipe = async (bytes, stream) => new Uint8Array(await new Response(new Blob([bytes]).stream().pipeThrough(stream)).arrayBuffer());
+async function shareCode() {
+  const diff = {};
+  for (const k in P) if (JSON.stringify(P[k]) !== JSON.stringify(DEFAULTS[k])) diff[k] = P[k];
+  return 'MSS1.' + b64url(await pipe(new TextEncoder().encode(JSON.stringify(diff)), new CompressionStream('deflate-raw')));
+}
+async function loadCode(code) {
+  const m = /MSS1\.([A-Za-z0-9_-]+)/.exec(code || ''); if (!m) throw new Error('not a share code');
+  const src = JSON.parse(new TextDecoder().decode(await pipe(unb64url(m[1]), new DecompressionStream('deflate-raw'))));
+  P = Object.assign(clone(DEFAULTS), src); P.palette = Object.assign(clone(DEFAULTS.palette), src.palette || {}); P.roleLock ||= {}; P.faceOverrides ||= {};
+  commit(); syncControls(); regenerate();
+}
+$('#share').onclick = async () => {
+  const code = await shareCode();
+  $('#shareCode').value = code; $('#shareLink').value = `${location.origin}${location.pathname}#${code}`; $('#shareIn').value = '';
+  $('#dlgShare').showModal();
+};
+const copyField = id => navigator.clipboard.writeText($(id).value).then(() => toast('Copied', 'ok'), () => { $(id).select(); toast('Press Ctrl+C to copy'); });
+$('#copyCode').onclick = e => { e.preventDefault(); copyField('#shareCode'); };
+$('#copyLink').onclick = e => { e.preventDefault(); copyField('#shareLink'); };
+$('#loadShare').onclick = async e => {
+  e.preventDefault();
+  try { await loadCode($('#shareIn').value); $('#dlgShare').close(); toast('Design loaded', 'ok'); } catch (err) { toast('Could not load: ' + err.message, 'err'); }
 };
 
 // ------------------------------------------------------------------ seed browser
@@ -555,6 +659,7 @@ const tog = (id, fn, init) => { const b = $(id); b.classList.toggle('on', init);
 tog('#tShadow', v => viewer.setShadows(v), true);
 tog('#tGrid', v => viewer.setGrid(v), false);
 tog('#tSpin', v => viewer.autoRotate = v, false);
+tog('#tMarker', v => viewer.setMarker(v), true);
 $('#shot').onclick = () => { const a = document.createElement('a'); a.href = viewer.screenshot(); a.download = safeName(P.name) + '.png'; a.click(); };
 const sun = () => viewer.setSun(+$('#sunAz').value, +$('#sunEl').value);
 $('#sunAz').oninput = sun; $('#sunEl').oninput = sun;
@@ -600,6 +705,11 @@ function toast(msg, kind = '') {
   setTimeout(() => { t.style.transition = 'opacity .3s'; t.style.opacity = '0'; setTimeout(() => t.remove(), 300); }, 3200);
 }
 
-buildControls(); presetList(); regenerate();
+buildControls(); presetList();
+if (location.hash.includes('MSS1.')) {
+  try { await loadCode(location.hash); toast('Design loaded from link', 'ok'); } catch (err) { toast('Link code invalid: ' + err.message, 'err'); }
+  history.replaceState(null, '', location.pathname);
+}
+regenerate();
 window.__studio = { viewer };   // handy for debugging from the console
 setTimeout(() => viewer.view('iso', 0), 60);

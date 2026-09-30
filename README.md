@@ -10,9 +10,13 @@ Design, preview and export Maze Runner-style wall structures for Minecraft (Worl
 1. Pick a **preset** or a **layout**, then tweak any control — the 3D preview updates instantly.
 2. **New seed** (R) or **Remix** (M) for fresh variations; **Tile ×** previews sections side by side.
 3. **Save to Minecraft** (Ctrl+S) writes straight into the WorldEdit schematics folders it finds
-   (default subfolder `studio`). In-game: `//schem load studio/<name>` then `//paste -a` while facing north.
+   (default subfolder `studio`). In-game: stand on the orange **paste spot** shown in the preview, face north,
+   `//schem load studio/<name>` then `//paste -a`. Big designs (e.g. whole mazes) can be split into chunks:
+   paste every chunk from the same spot and they rebuild the whole thing.
 4. **Batch…** exports many seeded variants at once (optionally numbered 1, 2, 3…).
 5. **Open .schem** previews any existing Sponge schematic.
+6. **Share…** gives a short code (or link) holding every setting; paste it back to get the exact same design.
+7. The **Blocks** list shows stacks / shulker boxes; *Copy list* copies it for survival builds.
 
 ## Pieces & whole mazes
 **Piece** picks the footprint: *Straight*, *Corner (L-shape)*, *T-junction*, *Crossroads* or *Whole maze*.
@@ -26,6 +30,15 @@ Paste any piece like the straight walls: stand at the front-left corner facing n
 ## Panels
 *Panel distinction* (Massing & relief) makes every slab read as its own cast panel: its own shade and
 block, calmer texture inside, and deeper, darker joints between slabs. 0 keeps the blended look.
+
+## Skyline
+*Skyline roughness* steps the top slabs up and down, *Skyline slope* leans the whole top one way, and
+*Broken tops* knocks ragged chunks out of the top edges (rain and ivy follow the broken shape).
+
+## Seams & faces
+*Seam matching* (straight walls) gives both ends of every wall the same joint profile and height, so walls
+with different seeds line up when placed end to end — use the same *Seam pattern* for a whole run.
+The **Faces** section lists every face of a piece; give any one its own layout or variation.
 
 ## Seed browser
 **Seeds…** (B) shows 12 thumbnails of the current settings with different seeds; click one to use it,
@@ -41,6 +54,8 @@ Sheltered areas under overhangs stay clean. The same wet paths drive the moss an
 Each block's randomness is fixed per position, so moving a rain slider only changes blocks the water reaches.
 
 ## Ivy & vines
+*Overgrowth* is the master control; *Dry-shade growth* lets ivy take hold on dry but shaded walls too.
+
 A growth simulation run on the finished structure: strands take root on the ground, ledges and cracks, then
 wander over the real surfaces — branching, wrapping round corners and thinning into tendrils. Growth is drawn
 to shade and damp (north faces, grooves, under ledges, low down, along the darker stained blocks) and dies back

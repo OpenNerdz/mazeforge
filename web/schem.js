@@ -54,8 +54,9 @@ async function gunzip(bytes) {
   return new Uint8Array(await new Response(stream).arrayBuffer());
 }
 
-// grid: {W, H, D, data (Uint16, index (y*D+z)*W+x), keys}
-export async function writeSchem(grid, library) {
+// grid: {W, H, D, data (Uint16, index (y*D+z)*W+x), keys}; offset = where the paste lands relative to the
+// player (default: the structure's south-west corner is the block the player stands on, extending north/east)
+export async function writeSchem(grid, library, offset = [0, 0, -grid.D]) {
   const { W, H, D, data, keys } = grid;
   const palIndex = new Map([['minecraft:air', 0]]);
   const keyToPal = keys.map(k => {
@@ -72,7 +73,7 @@ export async function writeSchem(grid, library) {
     [T.INT, 'Version', 2], [T.INT, 'DataVersion', DATA_VERSION],
     [T.SHORT, 'Width', W], [T.SHORT, 'Height', H], [T.SHORT, 'Length', D],
     [T.INTS, 'Offset', [0, 0, 0]],
-    [T.COMPOUND, 'Metadata', [[T.INT, 'WEOffsetX', 0], [T.INT, 'WEOffsetY', 0], [T.INT, 'WEOffsetZ', -D]]],
+    [T.COMPOUND, 'Metadata', [[T.INT, 'WEOffsetX', offset[0]], [T.INT, 'WEOffsetY', offset[1]], [T.INT, 'WEOffsetZ', offset[2]]]],
     [T.INT, 'PaletteMax', palIndex.size],
     [T.COMPOUND, 'Palette', [...palIndex].map(([k, v]) => [T.INT, k, v])],
     [T.BYTES, 'BlockData', vw.out()],

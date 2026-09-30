@@ -57,6 +57,28 @@ for (const width of [12, 20, 24, 26, 40]) {
   for (const layout of ['towers', 'cantilever', 'beam', 'slab']) check(sig(layout) !== base, `layout "${layout}" builds the same wall as "stacked"`); }
 console.log('ok   faces and layouts checked');
 
+// ---- seam matching: the end columns of walls with different seeds have the same shape
+{ const solidAt = g => (x, y, z) => { if (y >= g.H) return 0; const v = g.data[(y * g.D + z) * g.W + x]; return v && !soft(g.keys[v]) ? 1 : 0; };
+  const edgeSig = g => { const s = solidAt(g), out = []; for (const x of [0, 1, g.W - 2, g.W - 1]) for (let y = 0; y < DEFAULTS.heightMax + 2; y++) for (let z = 0; z < g.D; z++) out.push(s(x, y, z)); return out.join(''); };
+  const a = generate(params({ seed: 1, seamMatch: true, ivy: false })), b = generate(params({ seed: 2, seamMatch: true, ivy: false }));
+  check(edgeSig(a) === edgeSig(b), 'seam matching: wall ends differ between seeds');
+  const c = generate(params({ seed: 1, seamMatch: true, seamPattern: 5, ivy: false }));
+  check(edgeSig(a) !== edgeSig(c), 'seam pattern has no effect'); }
+// ---- face overrides only change their own face
+{ const base = generate(params({ piece: 'corner', seed: 4, ivy: false })), fl = base.faceList;
+  check(fl.length === 4, `corner: ${fl.length} faces listed`);
+  const f = fl.find(q => !q.primary), g = generate(params({ piece: 'corner', seed: 4, ivy: false, faceOverrides: { [f.i]: { layout: 'towers' } } }));
+  check(g.faceList.find(q => q.i === f.i).layout === 'towers', 'face override layout not applied');
+  let diff = 0; for (let i = 0; i < g.data.length && g.H === base.H; i++) if (g.data[i] !== base.data[i]) diff++;
+  check(g.H !== base.H || diff > 0, 'face override changed nothing'); }
+// ---- skyline controls and broken tops actually change the top
+{ const top = g => { let s = 0; for (let x = 0; x < g.W; x++) for (let z = 0; z < g.D; z++) for (let y = g.H - 1; y >= 0; y--) if (g.data[(y * g.D + z) * g.W + x]) { s += y; break; } return s; };
+  const flat = top(generate(params({ seed: 3, ivy: false, skylineRough: 0 })));
+  check(top(generate(params({ seed: 3, ivy: false, skylineRough: 1 }))) < flat, 'skyline roughness did not lower any tops');
+  check(top(generate(params({ seed: 3, ivy: false, skylineRough: 0, ruin: 1 }))) < flat, 'broken tops removed nothing');
+  check(top(generate(params({ seed: 3, ivy: false, skylineRough: 0, skylineSlope: 1 }))) < flat, 'skyline slope did nothing'); }
+console.log('ok   seams, face overrides and skyline checked');
+
 // ---- rain physics
 const faceDirt = (g, dz) => { const { W, H, D, data, dirt } = g, at = (x, y, z) => (y * D + z) * W + x; let s = 0, n = 0;
   for (let y = 5; y < H; y++) for (let z = 0; z < D; z++) for (let x = 3; x < W - 3; x++) {

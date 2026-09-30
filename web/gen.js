@@ -320,6 +320,46 @@ export class Skin {
       x += fw + R.int(P.finGapMin, Math.max(P.finGapMin, P.finGapMax));
     }
   }
+  // skyline: top slabs step down by a smooth amount that follows the world position (so front and back agree)
+  // plus a little of their own (roughness), and the whole piece can lean one way (slope);
+  // u(x) is the world position (0..1) of skin column x, span the piece's width in blocks
+  skyline(u, span = this.W) {
+    const P = this.P, rough = P.skylineRough || 0, slope = P.skylineSlope || 0;
+    if (!rough && !slope) return;
+    const { W, H, F } = this, top = new Int16Array(W).fill(-1), drop = new Float32Array(W);
+    for (let x = 0; x < W; x++) for (let y = H - 1; y >= 0; y--) if (F[this.i(x, y)] < NONE) { top[x] = y; break; }
+    for (let x = 0; x < W; x++) {
+      if (top[x] < 0) continue;
+      const m = this.mono[this.i(x, top[x])];
+      if (m === -2) { drop[x] = -1; continue; }                                  // grooves follow their neighbours
+      const s = m >= 0 ? this.monos[m] : null, cx = s ? (s.x0 + s.x1 - 1) / 2 : x;
+      const w = u ? u(Math.round(cx)) : cx / Math.max(1, W - 1), t = w * span / 11, i0 = Math.floor(t), fr = t - i0, sm = fr * fr * (3 - 2 * fr);
+      const wn = roll(P.seed, i0, 82) * (1 - sm) + roll(P.seed, i0 + 1, 82) * sm;           // smooth noise along the world
+      let d = rough * (18 * Math.pow(wn, 1.3) + 6 * roll(this.seed, m >= 0 ? m : 5000 + (x >> 2), 81));
+      if (slope) d += Math.abs(slope) * 22 * (slope > 0 ? w : 1 - w);
+      drop[x] = d;
+    }
+    for (let x = 0; x < W; x++) if (drop[x] < 0) drop[x] = Math.max(x > 0 ? drop[x - 1] : 0, x + 1 < W && drop[x + 1] >= 0 ? drop[x + 1] : 0);
+    for (let x = 0; x < W; x++) {
+      if (top[x] < 0) continue;
+      const nt = Math.max(Math.round(top[x] * 0.5), top[x] - Math.round(drop[x]));
+      for (let y = nt + 1; y <= top[x]; y++) F[this.i(x, y)] = NONE;
+    }
+  }
+  // seam matching: the outermost columns get the same joint profile on every wall (it depends only on the
+  // seam pattern number, not the seed), so walls with different seeds line up where they meet
+  seam() {
+    const P = this.P; if (!P.seamMatch) return;
+    const { W, H } = this, sw = Math.min(2, W >> 3), pat = (P.seamPattern | 0) + 1;
+    if (!sw) return;
+    const top = P.heightMin + Math.round((P.heightMax - P.heightMin) * roll(pat, 0, 61));
+    const joints = new Set(); for (let y = 8 + Math.round(roll(pat, 1, 61) * 4); y < top - 4; y += 9 + Math.round(roll(pat, y, 62) * 5)) joints.add(y);
+    for (const x of [...Array(sw).keys(), ...Array.from({ length: sw }, (_, k) => W - 1 - k)]) for (let y = 0; y < H; y++) {
+      const i = this.i(x, y);
+      if (y >= top) { this.F[i] = NONE; continue; }
+      this.F[i] = joints.has(y) ? 2 : 1; this.mono[i] = -1; this.lock[i] = 1;
+    }
+  }
   plinth() {
     if (this.P.plinthHeight <= 0) return;
     for (let x = 0; x < this.W; x++) for (let y = 0; y < this.P.plinthHeight; y++) {
@@ -696,9 +736,9 @@ export const LAYOUTS = {
 };
 export const LAYOUT_NAMES = { stacked: 'Stacked tiers', towers: 'Twin towers', cantilever: 'Cantilever / overhang', beam: 'Beam & passage', slab: 'Sector slab' };
 
-function buildSkin(W, H, seed, P, layout, feat) {
+function buildSkin(W, H, seed, P, layout, feat, u, span) {
   const s = new Skin(W, H, seed, P);
-  LAYOUTS[layout](s); s.plinth(); s.features(feat);
+  LAYOUTS[layout](s); s.skyline(u, span); s.seam(); s.plinth(); s.features(feat);
   s.weather();
   return s;
 }
@@ -818,15 +858,16 @@ function buildFootprint(P, { W, D, mask }) {
   const pool = ['stacked', 'towers', 'cantilever'];
   runs.forEach((r, i) => {
     if (isEnd(r)) return;
-    const len = r.cells.length;
-    if (i === primary) { r.skin = buildSkin(len, H, P.seed, P, P.layout, featBundle(P, 'front')); return; }
+    const len = r.cells.length, u = k => r.cells[Math.max(0, Math.min(len - 1, k))][0] / Math.max(1, W - 1);
+    const ov = (P.faceOverrides || {})[i] || {}, sd = ov.seed | 0;                  // per-face layout / seed tweaks
+    if (i === primary) { r.skin = buildSkin(len, H, P.seed + sd, P, ov.layout || P.layout, featBundle(P, 'front'), u, W); r.layout = ov.layout || P.layout; return; }
     const br = new Rng(P.seed * 7919 + P.backSeedOffset + i * 104729);
-    const layout = !P.doubleSided ? 'stacked' : P.backLayout === 'auto' ? br.pick(len >= 30 ? [...pool, 'beam'] : pool) : P.backLayout === 'same' ? P.layout : P.backLayout;
+    const layout = ov.layout || (!P.doubleSided ? 'stacked' : P.backLayout === 'auto' ? br.pick(len >= 30 ? [...pool, 'beam'] : pool) : P.backLayout === 'same' ? P.layout : P.backLayout);
     const opposite = r.d === 2 && P.piece !== 'maze' && i === runs.findIndex(q => q.d === 2 && !isEnd(q));
     const bp = P.doubleSided ? P : { ...P, reliefMax: 0, splitChance: 0.2, ledgeChance: 0 };
     const feat = featBundle(P, 'back', P.doubleSided ? backK(P) * (opposite ? 1 : 0.6) : 0);
     if (!opposite) feat.lettering = '';
-    r.skin = buildSkin(len, H, P.seed + P.backSeedOffset + i * 7919, bp, layout, feat);
+    r.skin = buildSkin(len, H, P.seed + P.backSeedOffset + i * 7919 + sd, bp, layout, feat, u, W);
     r.layout = layout;
   });
   runs.forEach((r, i) => {                                                      // wall ends follow a neighbour's tiers
@@ -860,7 +901,7 @@ function buildFootprint(P, { W, D, mask }) {
     for (let y = 0; y < H; y++) if (skinF(shaper[k], shapeU[k], y) < NONE) occ[at(x, y, z)] = 1;
   }
   // --- ...then relief is carved in from every face (the primary first), keeping `core` solid blocks behind
-  const endRelief = P.endDetail ? Math.max(0, P.endRelief ?? 2) : 0;
+  const endRelief = P.endDetail && !P.seamMatch ? Math.max(0, P.endRelief ?? 2) : 0;   // matched seams: ends are hidden, keep them flat
   const order = runs.map((_, i) => i).sort((a, b) => (a !== primary) - (b !== primary) || (runs[a].end ? 1 : 0) - (runs[b].end ? 1 : 0));
   for (const ri of order) {
     const r = runs[ri], [nx, nz] = N4[r.d];
@@ -879,6 +920,7 @@ function buildFootprint(P, { W, D, mask }) {
       }
     });
   }
+  if (P.ruin > 0) ruinTops(W, H, D, occ, mask, P);
   // --- materials: each exposed block takes its owning face's skin
   const { data, keys, id: kid, dirt } = paint(W, H, D, occ, P, (x, y, z, o, wet) => {
     const k = x * D + z, r = runs[owner[k]], out = 'senw'[r.d];
@@ -897,9 +939,34 @@ function buildFootprint(P, { W, D, mask }) {
   });
   const top = trimTop(W, H, D, data);
   const faces = runs.filter(r => !r.end).length, back = runs.find((r, i) => i !== primary && r.layout)?.layout;
-  return { W, H: top, D, data: data.subarray(0, top * D * W), dirt: dirt.subarray(0, top * D * W), keys, backLayout: back, faces };
+  const faceList = runs.map((r, i) => r.end ? null : { i, dir: 'senw'[r.d], len: r.cells.length, layout: r.layout, primary: i === primary }).filter(Boolean);
+  return { W, H: top, D, data: data.subarray(0, top * D * W), dirt: dirt.subarray(0, top * D * W), keys, backLayout: back, faces, faceList };
 }
 
+// broken tops: ragged chunks knocked out of the wall top, mostly at the edges, never below half height
+function ruinTops(W, H, D, occ, mask, P) {
+  const at = (x, y, z) => (y * D + z) * W + x, k = P.ruin, R = new Rng((P.seed * 97 + 5) >>> 0);
+  const th = new Int16Array(W * D).fill(-1);
+  for (let x = 0; x < W; x++) for (let z = 0; z < D; z++) for (let y = H - 1; y >= 0; y--) if (occ[at(x, y, z)]) { th[x * D + z] = y; break; }
+  const edge = [];
+  for (let x = 0; x < W; x++) for (let z = 0; z < D; z++) {
+    if (!mask[x * D + z] || th[x * D + z] < 0) continue;
+    if (N4.some(([dx, dz]) => { const a = x + dx, b = z + dz; return a < 0 || b < 0 || a >= W || b >= D || !mask[a * D + b]; })) edge.push([x, z]);
+  }
+  if (!edge.length) return;
+  const n = Math.round(edge.length / 26 * k * R.uniform(0.7, 1.3));
+  for (let c = 0; c < n; c++) {
+    const [cx, cz] = R.pick(edge), r = R.uniform(2.5, 3 + 7 * k), depth = R.uniform(3, 4 + 16 * k);
+    for (let x = Math.floor(cx - r); x <= cx + r; x++) for (let z = Math.floor(cz - r); z <= cz + r; z++) {
+      if (x < 0 || z < 0 || x >= W || z >= D || th[x * D + z] < 0) continue;
+      const q = Math.hypot(x - cx, z - cz) / r; if (q >= 1) continue;
+      const t = th[x * D + z], dd = depth * (1 - Math.pow(q, 1.4)) * (0.7 + 0.6 * roll(P.seed, x * D + z, 91 + c));
+      const nt = Math.max(Math.round(H * 0.5), t - Math.round(dd));
+      for (let y = nt + 1; y <= t; y++) occ[at(x, y, z)] = 0;
+      if (nt < t) th[x * D + z] = nt;
+    }
+  }
+}
 function endSkin(tierSkin, col, H, D, P, side) {
   const EP = { ...P, reliefMax: Math.max(0, P.endRelief ?? 2), tieChance: P.tieChance * 0.7, splitChance: 0.55,
     minSlab: Math.max(3, Math.floor(D / 4)), ledgeChance: 0.2, jointDepth: Math.min(1, P.jointDepth), cracks: Math.ceil(P.cracks / 2) };
@@ -1076,7 +1143,7 @@ export function composeGrids(pieces) {
       const v = g.data[(y * g.D + zz) * g.W + xx]; if (v) data[(y * D + zz + z - z0) * W + xx + x - x0] = map[v];
     }
   }
-  return { W, H, D, data, keys };
+  return { W, H, D, data, keys, origin: [pieces[0].x - x0, pieces[0].z - z0] };
 }
 
 // ------------------------------------------------------------------ ivy & vines
@@ -1097,13 +1164,13 @@ export function applyIvy(g, P) {
   const free = (x, y, z) => inb(x, y, z) && data[at(x, y, z)] === 0;
 
   // dampness of each block type: darker shade bands and grime / crack blocks read as wet
-  const pal = P.palette, dampOf = new Map();
+  const pal = P.palette, dampOf = new Map(), dry = P.ivyDryShade ?? 0, og = 1 + 2 * (P.ivyOvergrowth ?? 0);   // og: master multiplier
   (pal.bands || []).forEach((band, b) => band.forEach(k => { if (!dampOf.has(k)) dampOf.set(k, b / 8); }));
   for (const r of ['grime', 'crack', 'deep', 'rust2']) if (pal[r]) dampOf.set(pal[r], 0.95);
   const damp = (x, y, z) => {                                         // wet streaks from the rain simulation, plus dark blocks
     const v = data[at(x, y, z)]; if (!v) return 0;
     const b = dampOf.get(keys[v]) ?? 0.4;
-    return g.dirt ? Math.min(1, 0.35 * b + 1.6 * g.dirt[at(x, y, z)]) : b;
+    return Math.max(dry, g.dirt ? Math.min(1, 0.35 * b + 1.6 * g.dirt[at(x, y, z)]) : b);
   };
   const shadeK = P.ivyShade ?? 0.7;
   const cl = vnoise(W, D, Math.max(2, P.ivyCluster), R);
@@ -1214,9 +1281,10 @@ export function applyIvy(g, P) {
       }
     }
   };
-  sow(drapes, P.ivyAmount * 0.06, -1, P.ivyLength, P.ivyWidth);
-  sow(roots, P.ivyClimb * 0.10, 1, P.ivyClimbHeight, P.ivyWidth + 1);
-  sow(cracks, P.ivyAmount * 0.008, R.f() < 0.5 ? 1 : -1, P.ivyLength * 0.45, 1);
+  const reach = Math.sqrt(og);
+  sow(drapes, P.ivyAmount * 0.06 * og, -1, P.ivyLength * reach, P.ivyWidth);
+  sow(roots, P.ivyClimb * 0.10 * og, 1, P.ivyClimbHeight * reach, P.ivyWidth + 1);
+  sow(cracks, P.ivyAmount * 0.008 * og, R.f() < 0.5 ? 1 : -1, P.ivyLength * 0.45 * reach, 1);
 
   // dense mats get leafy: swap some vines for leaves pressed against the wall
   for (const [k] of vines) {
@@ -1248,7 +1316,7 @@ export const DEFAULT_PALETTE = {
 export const DEFAULTS = {
   name: 'my_wall', layout: 'stacked', seed: 1234, width: 20, heightMin: 70, heightMax: 74, thickness: 24,
   doubleSided: true, backLayout: 'auto', backSeedOffset: 9000, backFeatures: 'same', minCore: 4, endDetail: true, endRelief: 2,
-  reliefMax: 4, tierMin: 8, tierMax: 14, splitChance: 0.6, minSlab: 5, slabTarget: 11, panelDetail: 0.55, bayWidth: 20, bayRelief: 3, ledgeChance: 0.5, jointDepth: 1, grooveDepth: 2, formlineChance: 0.5,
+  reliefMax: 4, tierMin: 8, tierMax: 14, splitChance: 0.6, minSlab: 5, slabTarget: 11, panelDetail: 0.55, skylineRough: 0.35, skylineSlope: 0, ruin: 0, seamMatch: false, seamPattern: 0, faceOverrides: {}, bayWidth: 20, bayRelief: 3, ledgeChance: 0.5, jointDepth: 1, grooveDepth: 2, formlineChance: 0.5,
   fins: true, finHeightMin: 15, finHeightMax: 22, finWidth: 2, finGapMin: 3, finGapMax: 5, plinthHeight: 2, plinthDepth: 2,
   towerCount: 2, towerGap: 2, towerGapDepth: 8, cubeWidth: 12, cubeHeight: 14, overhang: 5,
   passageHeight: 14, passageDepth: 14, beamHeight: 6, slabWidth: 16, slabHeight: 43,
@@ -1262,7 +1330,7 @@ export const DEFAULTS = {
   cracks: 2, crackRust: 0.4, rust: 1.0, chips: 0.5, pockmarks: 0.003,
   palette: DEFAULT_PALETTE,
   piece: 'straight', cornerPreview: true, mazeCols: 5, mazeRows: 5, mazeCorridor: 9, mazeWall: 8, mazeBraid: 0.15, glade: true, gladeSize: 1,
-  ivy: true, ivyAmount: 0.35, ivyLength: 22, ivyWidth: 4, ivyClimb: 0.35, ivyClimbHeight: 14, ivyLeaves: 0.55, ivyMoss: 0.35, ivyCluster: 7, ivyVariation: 1, ivyLeafBlock: 'azalea_leaves', ivyBranching: 0.07, ivyWander: 0.45, ivyShade: 0.7,
+  ivy: true, ivyAmount: 0.35, ivyLength: 22, ivyWidth: 4, ivyClimb: 0.35, ivyClimbHeight: 14, ivyLeaves: 0.55, ivyMoss: 0.35, ivyCluster: 7, ivyVariation: 1, ivyLeafBlock: 'azalea_leaves', ivyBranching: 0.07, ivyWander: 0.45, ivyShade: 0.7, ivyOvergrowth: 0.25, ivyDryShade: 0.35,
   autoPalette: true, autoRoles: true, autoContrast: 1.0, autoSpread: 0.08, autoSatMax: 0.12, roleLock: {},
   autoBlocks: ['smooth_stone', 'andesite', 'polished_andesite', 'stone', 'stone_bricks', 'cracked_stone_bricks', 'tuff',
     'mossy_stone_bricks', 'cut_deepslate', 'cut_scoria', 'red_terracotta', 'yellow_terracotta'],
@@ -1283,5 +1351,5 @@ export const PRESETS = {
   'Crossroads': { piece: 'cross', layout: 'stacked', width: 56, fins: true },
   'Maze with Glade': { piece: 'maze', layout: 'stacked', mazeCols: 5, mazeRows: 5, mazeCorridor: 9, mazeWall: 8, glade: true, fins: false, ivyAmount: 0.45 },
   'Big maze (9×9)': { piece: 'maze', layout: 'stacked', mazeCols: 9, mazeRows: 9, mazeCorridor: 8, mazeWall: 6, glade: true, gladeSize: 3, fins: false, heightMin: 40, heightMax: 48, ivyAmount: 0.4 },
-  'Ruined low wall': { layout: 'stacked', heightMin: 30, heightMax: 42, cracks: 7, chips: 0.9, pockmarks: 0.02, moss: 2, streakStrength: 1.4, fins: false },
+  'Ruined low wall': { layout: 'stacked', heightMin: 30, heightMax: 42, ruin: 0.6, skylineRough: 0.6, cracks: 7, chips: 0.9, pockmarks: 0.02, moss: 2, streakStrength: 1.4, fins: false },
 };

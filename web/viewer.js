@@ -43,6 +43,16 @@ export class Viewer {
     this.grid.position.y = 0.02; this.grid.material.transparent = true; this.grid.material.opacity = 0.35;
     this.grid.visible = false; this.scene.add(this.grid);
 
+    // paste guide: where to stand (the block the player is on) and which way to face for //paste -a
+    this.marker = new THREE.Group();
+    const mm = new THREE.MeshLambertMaterial({ color: 0xf0a73a, emissive: 0x6a3a00 });
+    const body = new THREE.Mesh(new THREE.BoxGeometry(0.6, 1.8, 0.6), mm); body.position.set(0.5, 0.9, 0.5);
+    const arrow = new THREE.Mesh(new THREE.ConeGeometry(0.45, 1.2, 12), mm); arrow.rotation.x = -Math.PI / 2; arrow.position.set(0.5, 2.5, -0.1);
+    const pad = new THREE.Mesh(new THREE.PlaneGeometry(1, 1), new THREE.MeshBasicMaterial({ color: 0xf0a73a, transparent: true, opacity: 0.55 }));
+    pad.rotation.x = -Math.PI / 2; pad.position.set(0.5, 0.03, 0.5);
+    this.marker.add(body, arrow, pad); this.marker.visible = false; this.scene.add(this.marker);
+    this.showMarker = true;
+
     this.group = new THREE.Group(); this.scene.add(this.group);
     this.texCache = new Map(); this.matCache = new Map();
     this.bounds = new THREE.Box3(new THREE.Vector3(-10, 0, -10), new THREE.Vector3(10, 70, 10));
@@ -120,7 +130,8 @@ export class Viewer {
     this.geoCache.set(key, g); return g;
   }
   // grids: array of {W,H,D,data,keys}; laid out side by side along +x
-  show(grids, { keepCamera = true } = {}) {
+  // marker: [x, z] of the paste block in the first grid's coordinates (null = no guide)
+  show(grids, { keepCamera = true, marker = null } = {}) {
     for (const c of [...this.group.children]) { this.group.remove(c); c.dispose?.(); }
     const perKey = new Map();
     let ox = 0, maxH = 0, maxD = 0;
@@ -150,6 +161,9 @@ export class Viewer {
       this.group.add(mesh); count += n;
     }
     this.bounds.set(new THREE.Vector3(-totalW / 2, 0, -maxD / 2), new THREE.Vector3(totalW / 2, maxH, maxD / 2));
+    this.markerAt = marker && [marker[0] - totalW / 2, marker[1] - grids[0].D / 2];
+    if (this.markerAt) this.marker.position.set(this.markerAt[0], 0, this.markerAt[1]);
+    this.marker.visible = !!this.markerAt && this.showMarker;
     this.fitShadow();
     if (!keepCamera) this.view('iso', 0);
     this.dirty = true;
@@ -166,6 +180,7 @@ export class Viewer {
   setSun(az, el) { this.sunAz = az; this.sunEl = el; this.fitShadow(); }
   setShadows(on) { this.renderer.shadowMap.enabled = on; this.sun.castShadow = on; this.scene.traverse(o => { if (o.material) o.material.needsUpdate = true; }); this.dirty = true; }
   setGrid(on) { this.grid.visible = on; this.dirty = true; }
+  setMarker(on) { this.showMarker = on; this.marker.visible = on && !!this.markerAt; this.dirty = true; }
   view(name, dur = 700) {
     const b = this.bounds, c = b.getCenter(new THREE.Vector3()), size = b.getSize(new THREE.Vector3());
     const span = Math.max(size.x, size.z * (name === 'top' || name === 'iso' ? 1 : 0), size.y * 1.1, 20), dist = span / (2 * Math.tan(THREE.MathUtils.degToRad(this.camera.fov / 2))) * 1.15;

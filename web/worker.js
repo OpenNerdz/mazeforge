@@ -5,14 +5,15 @@ import { generate, rotateGrid, composeGrids } from './gen.js';
 export function buildScene(P, tiles) {
   if (P.piece === 'straight') {
     const shown = Array.from({ length: tiles }, (_, k) => generate({ ...P, seed: P.seed + k * 17 }));
-    return { design: shown[0], shown };
+    return { design: shown[0], shown, origin: [0, 0] };
   }
   const design = generate(P);
-  if (P.piece !== 'corner' || !P.cornerPreview) return { design, shown: [design] };
+  if (P.piece !== 'corner' || !P.cornerPreview) return { design, shown: [design], origin: [0, 0] };
   // straight walls on both arms: west of the south-facing arm, and north of the east-facing arm
   const wall = s => generate({ ...P, piece: 'straight', width: 20, seed: P.seed + s });
   const a = wall(101), b = rotateGrid(wall(202), 3), L = design.W, D = P.thickness;
-  return { design, shown: [composeGrids([{ g: design, x: 0, z: 0 }, { g: a, x: -a.W, z: L - D }, { g: b, x: L - D, z: -b.D }])] };
+  const both = composeGrids([{ g: design, x: 0, z: 0 }, { g: a, x: -a.W, z: L - D }, { g: b, x: L - D, z: -b.D }]);
+  return { design, shown: [both], origin: both.origin };           // origin: where the design sits in what is shown
 }
 
 if (typeof self !== 'undefined' && typeof window === 'undefined') {

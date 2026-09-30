@@ -17,6 +17,7 @@
     <input id="name" class="name-input" spellcheck="false" title="File name used when exporting">
     <select id="preset" title="Load a preset"></select>
     <button id="savePreset" class="ghost" title="Save current settings as a preset">Save preset</button>
+    <button id="share" class="ghost" title="Copy a share code or link for this design">Share…</button>
   </div>
   <div class="tb-group">
     <button id="undo" class="icon" title="Undo (Ctrl+Z)">↶</button>
@@ -49,6 +50,7 @@
         <button id="tShadow" class="on" title="Shadows">☀ Shadows</button>
         <button id="tGrid" title="Ground grid">▦ Grid</button>
         <button id="tSpin" title="Auto-rotate">⟳ Spin</button>
+        <button id="tMarker" title="Show where to stand and face for //paste -a">⌖ Paste spot</button>
         <button id="shot" title="Save a screenshot (P)">⎙ Shot</button>
       </div>
     </div>
@@ -70,7 +72,8 @@
     <div id="targets" class="targets"></div>
     <label class="row">Subfolder <input id="subfolder" value="studio" spellcheck="false"></label>
     <label class="row check"><input type="checkbox" id="overwrite"> Overwrite files with the same name</label>
-    <p class="muted small">In-game: <code id="loadHint"></code> then <code>//paste -a</code></p>
+    <label class="row check" id="chunkRow"><input type="checkbox" id="chunked"> Split into chunks of <input type="number" id="chunkSize" value="64" min="16" max="256" style="width:70px"> blocks</label>
+    <p class="muted small">In-game: <code id="loadHint"></code></p>
     <div class="actions"><button value="cancel" class="ghost">Cancel</button><button id="doSave" value="ok" class="primary">Save</button></div>
   </form>
 </dialog>
@@ -95,6 +98,17 @@
     <p class="muted">Same settings, different seeds. Click one to use it.</p>
     <div id="seedGrid" class="seedgrid"></div>
     <div class="actions"><button value="cancel" class="ghost">Close</button><button id="seedMore" class="primary">Next 12</button></div>
+  </form>
+</dialog>
+<dialog id="dlgShare">
+  <form method="dialog">
+    <h3>Share design</h3>
+    <p class="muted">Everything that makes this design, in one code. Paste it back here (or open the link) to get the exact same wall.</p>
+    <label class="row">Code <input id="shareCode" readonly spellcheck="false"></label>
+    <label class="row">Link <input id="shareLink" readonly spellcheck="false"></label>
+    <div class="actions" style="justify-content:flex-start"><button id="copyCode" class="ghost">Copy code</button><button id="copyLink" class="ghost">Copy link</button></div>
+    <label class="row">Load a code <input id="shareIn" placeholder="MSS1.…" spellcheck="false"></label>
+    <div class="actions"><button value="cancel" class="ghost">Close</button><button id="loadShare" class="primary">Load</button></div>
   </form>
 </dialog>
 <input type="file" id="fileIn" accept=".schem" hidden>
