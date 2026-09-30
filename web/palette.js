@@ -33,7 +33,9 @@ export function effectivePalette(P, library) {
   for (const e of sorted) e.r = (Lmax - e.L) / span;                 // 0 = lightest, 1 = darkest
   // shade bands only use neutral blocks; strongly coloured ones are kept as accents (paint, rust, hazard)
   const satMax = P.autoSatMax ?? 0.12;
-  let pool = sorted.filter(e => e.s <= satMax);
+  // greenish blocks (moss) are for grime and wet streaks only: in a shade band they speckle every face
+  const mossy = e => e.s > 0.04 && hueIn(e.h, 60, 170);
+  let pool = sorted.filter(e => e.s <= satMax && !mossy(e));
   if (pool.length < Math.max(2, Math.ceil(sorted.length * 0.3))) {          // mostly colourful set: keep the calmest 70%
     const calm = new Set([...sorted].sort((a, b) => a.s - b.s).slice(0, Math.max(2, Math.ceil(sorted.length * 0.7))));
     pool = sorted.filter(e => calm.has(e));

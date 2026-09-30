@@ -20,6 +20,12 @@ Set **Piece → Corner (L-shape)**. Width becomes the arm length (measured on th
 *Show attached walls* previews it joined to straight walls (only the corner itself is exported).
 Paste it like the straight walls: stand in front of the left end facing north, `//paste -a`.
 
+## Rain & dirt
+Dirt comes from a rain simulation: rain lands on every top open to the sky, flows across each top to a few
+low drip points and runs down the face below — wandering, widening, landing on ledges that stick out and
+dripping again from their edges. Sheltered areas under overhangs stay clean. The same wet paths drive the
+moss and the ivy. Controls: *Rain dirt*, *Streak length*, *Drip spread* (Weathering).
+
 ## Ivy & vines
 A growth simulation run on the finished structure: strands take root on the ground, ledges and cracks, then
 wander over the real surfaces — branching, wrapping round corners and thinning into tendrils. Growth is drawn

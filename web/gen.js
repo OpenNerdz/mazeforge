@@ -19,6 +19,14 @@ export class Rng {
   normal(m = 0, s = 1) { const u = 1 - this.r(), v = this.r(); return m + s * Math.sqrt(-2 * Math.log(u)) * Math.cos(2 * Math.PI * v); }
 }
 
+// a fixed random roll per position: a block keeps its roll whatever other settings change, so a slider
+// only alters the blocks it actually affects (a shared random stream would reshuffle the whole wall)
+export function roll(seed, i, salt) {
+  let h = (seed ^ Math.imul(i + 1, 0x9E3779B1) ^ Math.imul(salt + 1, 0x85EBCA77)) >>> 0;
+  h = Math.imul(h ^ (h >>> 16), 0x7FEB352D); h = Math.imul(h ^ (h >>> 15), 0x846CA68B);
+  return ((h ^ (h >>> 16)) >>> 0) / 4294967296;
+}
+
 function vnoise(w, h, scale, rng) {
   scale = Math.max(0.5, scale);
   const gw = Math.floor(w / scale) + 3, gh = Math.floor(h / scale) + 3;
@@ -31,6 +39,16 @@ function vnoise(w, h, scale, rng) {
       const a = g[x0 * gh + y0], b = g[(x0 + 1) * gh + y0], c = g[x0 * gh + y0 + 1], d = g[(x0 + 1) * gh + y0 + 1];
       out[x * h + y] = (a * (1 - fx) + b * fx) * (1 - fy) + (c * (1 - fx) + d * fx) * fy;
     }
+  }
+  return out;
+}
+
+// value noise stretched vertically (sy >> sx): used for rain striations
+function streakNoise(w, h, R) {
+  const cols = vnoise(w, Math.ceil(h / 7) + 2, 1.3, R), fine = vnoise(w, h, 1.1, R), out = new Float32Array(w * h), ch = Math.ceil(h / 7) + 2;
+  for (let x = 0; x < w; x++) for (let y = 0; y < h; y++) {
+    const t = y / 7, y0 = Math.floor(t), f = t - y0;
+    out[x * h + y] = 0.8 * (cols[x * ch + y0] * (1 - f) + cols[x * ch + y0 + 1] * f) + 0.2 * fine[x * h + y];
   }
   return out;
 }
@@ -506,19 +524,6 @@ export class Skin {
       if (P.grimeHeight > 0) V[i] += P.grimeStrength * Math.max(0, 1 - y / P.grimeHeight) * (0.5 + n4[i]);
       if (this.crack[i]) V[i] += 0.30;
     }
-    const sn = vnoise(W, 1, 1.6, R);
-    for (let x = 0; x < W; x++) {
-      const strength = 0.06 + P.streakStrength * Math.pow(Math.max(0, Math.min(1, sn[x] * 1.5 - (0.45 + (0.5 - P.streakCoverage) * 0.6))), 1.5);
-      const length = R.uniform(P.streakLength * 0.45, P.streakLength * 1.55);
-      let run = 0;
-      for (let y = H - 1; y >= 0; y--) {
-        const i = this.i(x, y); if (F[i] === NONE) continue;
-        const above = y + 1 < H ? F[i + 1] : NONE;
-        if (above === NONE || above > F[i]) run = Math.max(run, strength * R.uniform(0.6, 1.2) * (above === NONE ? 1 : 0.8));
-        else if (above < F[i]) run *= 0.35;
-        V[i] += run; run *= Math.exp(-1 / length);
-      }
-    }
     this.monos.forEach((m, id) => {
       if (!m.ties) return;
       const sp = P.tieSpacing;
@@ -532,31 +537,35 @@ export class Skin {
     });
     this.V = V;
     this.pick = vnoise(W, H, P.patchSize, R).map(v => v * 2.7);
+    this.striae = streakNoise(W, H, R);
   }
-  faceBlock(x, y, face) {
-    const P = this.P, pal = P.palette, R = this.R, i = this.i(x, y), V = this.V;
+  faceBlock(x, y, face, wet = 0) {
+    const P = this.P, pal = P.palette, i = this.i(x, y), V = this.V;
     if (face && this.special.has(i)) return this.special.get(i);
-    let b = shadeBlock(pal, V[i] + (face ? 0 : 0.05), this.pick[i], R);
-    const ru = this.rust[i], mossK = P.moss;
+    const r = salt => roll(this.seed, i * 2 + (face ? 1 : 0), salt);
+    const st = this.striae[i], w = wet * (0.55 + 0.9 * st);                   // water stains in vertical striations
+    const pick = wet > 0.02 ? this.pick[i] * (1 - Math.min(1, wet * 4)) + st * 2.7 * Math.min(1, wet * 4) : this.pick[i];
+    let b = shadeBlock(pal, V[i] + w + (face ? 0 : 0.05), pick, r(0));
+    const ru = this.rust[i], mossK = P.moss, g = r(1);
     if (face && ru > 0.7) b = pal.rust;
-    else if (face && ru > 0.4) b = R.f() < 0.4 ? pal.rust : (pal.rust2 || pal.rust);
-    else if (face && ru > 0.15 && R.f() < 0.6) b = pal.crack;
-    else if (y < P.grimeHeight * 0.7 && R.f() < 0.5 * mossK * (1 - y / (P.grimeHeight * 0.7))) b = pal.grime;
-    else if (V[i] > 0.5 && y < 30 && R.f() < 0.15 * mossK) b = pal.grime;
-    else if (this.mono[i] === -2 && R.f() < 0.25 * mossK) b = pal.grime;
-    if (this.crack[i] && face) b = R.f() < 0.8 ? pal.crack : pal.deep;
+    else if (face && ru > 0.4) b = g < 0.4 ? pal.rust : (pal.rust2 || pal.rust);
+    else if (face && ru > 0.15 && g < 0.6) b = pal.crack;
+    else if (y < P.grimeHeight * 0.7 && g < 0.5 * mossK * (1 - y / (P.grimeHeight * 0.7))) b = pal.grime;
+    else if (w > 0.2 && st > 1 - (w - 0.2) * 1.6 * mossK) b = pal.grime;    // the wettest striations turn green
+    else if (this.mono[i] === -2 && r(3) < 0.25 * mossK) b = pal.grime;
+    if (this.crack[i] && face) b = r(4) < 0.8 ? pal.crack : pal.deep;
     return b;
   }
 }
 export const BANDS = [0.10, 0.18, 0.26, 0.34, 0.44, 0.54, 0.66, 0.80, 99];
 // pick a block for darkness v from the palette's shade bands; pick = patch noise so neighbours match
-function shadeBlock(pal, v, pick, R) {
+function shadeBlock(pal, v, pick, jitter) {
   let band = BANDS.length - 1;
   for (let b = 0; b < BANDS.length; b++) if (v < BANDS[b]) { band = b; break; }
   let opts = pal.bands[band];
   for (let d = 1; !opts.length && d < BANDS.length; d++) opts = pal.bands[band - d]?.length ? pal.bands[band - d] : pal.bands[band + d] || [];
   if (!opts.length) opts = ['stone'];
-  return opts[Math.floor(((pick + 0.12 * R.f()) % 1) * opts.length) % opts.length];
+  return opts[Math.floor(((pick + 0.12 * jitter) % 1) * opts.length) % opts.length];
 }
 // block ids for a grid: keys[0] is always air
 function keyTable(keys = ['air']) {
@@ -589,12 +598,12 @@ function makeTop(W, D, P, seed) {
     V[i] = P.baseTone + 0.1 + 0.2 * (n1[i] - 0.5) + 0.1 * (n2[i] - 0.5) + P.speckle * (R.f() - 0.5) + 0.45 * puddle;
   }
   return {
-    block(x, z, edgeDist) {
-      const i = x * D + z;
-      let b = shadeBlock(pal, V[i] + (edgeDist <= 1 ? 0.06 : 0), pick[i], R);   // dirt collects along the edges
+    block(x, y, z, edgeDist, water = 0) {
+      const i = x * D + z, r = salt => roll(seed, (y * W + x) * D + z, salt);
+      let b = shadeBlock(pal, V[i] + water + (edgeDist <= 1 ? 0.06 : 0), pick[i], r(0));   // dirt collects along the edges
       const puddle = Math.max(0, wet[i] - 0.58) / 0.42;
-      if (R.f() < (0.05 + 0.5 * puddle) * P.moss) b = pal.grime;
-      else if (R.f() < 0.015 + 0.02 * P.chips) b = pal.crack;
+      if (r(1) < (0.05 + 0.5 * puddle + 0.8 * water) * P.moss) b = pal.grime;
+      else if (r(2) < 0.015 + 0.02 * P.chips) b = pal.crack;
       return b;
     },
   };
@@ -770,37 +779,109 @@ function combine(front, back, W, H, D, P) {
   // each end face gets its own designed skin (width = thickness), with joints aligned to the front's tiers
   const ends = [endSkin(front, 0, H, D, P, 0), endSkin(front, W - 1, H, D, P, 1)];
   const relief = P.endDetail ? Math.max(0, P.endRelief ?? 2) : 0;
-  const solid = (x, y, z) => x >= 0 && x < W && y >= 0 && y < H && z >= 0 && z < D && has[x * H + y]
-    && z >= zb[x * H + y] && z <= zf[x * H + y] && x >= endDepth(ends[0], z, y, relief) && x <= W - 1 - endDepth(ends[1], D - 1 - z, y, relief);
-  const { keys, id: kid } = keyTable();
-  const data = new Uint16Array(W * H * D);
-  const at = (x, y, z) => (y * D + z) * W + x;   // schematic order: x fastest, then z, then y
-  const roof = makeTop(W, D, P, P.seed * 17 + 5);
-  const pal = P.palette;
+  const occ = new Uint8Array(W * H * D);                         // schematic order: x fastest, then z, then y
   for (let x = 0; x < W; x++) for (let y = 0; y < H; y++) {
     const i = x * H + y; if (!has[i]) continue;
-    for (let z = zb[i]; z <= zf[i]; z++) {
-      if (!solid(x, y, z)) continue;
-      const oF = !solid(x, y, z + 1), oB = !solid(x, y, z - 1), oL = !solid(x - 1, y, z), oR = !solid(x + 1, y, z);
-      let b;
-      const oU = !solid(x, y + 1, z);
-      if (!(oF || oB || oL || oR) && !oU && solid(x, y - 1, z)) b = pal.interior;
-      else if (oU && !(oF || oB || oL || oR)) b = roof.block(x, z, edgeDist(solid, x, y, z));   // top surface
-      else if (!oF && !oB && (oL || oR)) {                     // end face
-        const side = oL && (!oR || x < W / 2) ? 0 : 1;
-        b = ends[side].faceBlock(side ? D - 1 - z : z, y, true);
-      }
-      else if (z >= mid) b = front.faceBlock(x, y, z === zf[i]);
-      else b = back.faceBlock(W - 1 - x, y, z === zb[i]);
-      data[at(x, y, z)] = kid(b);
-    }
+    for (let z = zb[i]; z <= zf[i]; z++)
+      if (x >= endDepth(ends[0], z, y, relief) && x <= W - 1 - endDepth(ends[1], D - 1 - z, y, relief)) occ[(y * D + z) * W + x] = 1;
   }
+  const { data, keys, id: kid, dirt, at } = paint(W, H, D, occ, P, (x, y, z, o, wet) => {
+    if (!o.n && !o.s && (o.w || o.e)) {                              // end face
+      const side = o.w && (!o.e || x < W / 2) ? 0 : 1;
+      return ends[side].faceBlock(side ? D - 1 - z : z, y, true, wet);
+    }
+    const i = x * H + y;
+    return z >= mid ? front.faceBlock(x, y, z === zf[i], wet) : back.faceBlock(W - 1 - x, y, z === zb[i], wet);
+  });
+  const pal = P.palette;
   for (const [side, sgn] of [[front, 1], [back, -1]]) fixtures(side, (x, y, depth, v) => {
     const gx = sgn > 0 ? x : W - 1 - x, gz = sgn > 0 ? D - 1 - depth : depth;
     if (gx >= 0 && gx < W && y >= 0 && y < H && gz >= 0 && gz < D && data[at(gx, y, gz)] === 0) data[at(gx, y, gz)] = kid(pal.bars + '|' + v);
   });
   const top = trimTop(W, H, D, data);
-  return { W, H: top, D, data: data.subarray(0, top * D * W), keys, backLayout: back.layoutName };
+  return { W, H: top, D, data: data.subarray(0, top * D * W), dirt: dirt.subarray(0, top * D * W), keys, backLayout: back.layoutName };
+}
+
+// ------------------------------------------------------------------ rain & dirt
+// Rain lands on every top open to the sky, flows across each top towards its edges (gathering at low
+// points, so it leaves at a few drip points) and runs down the face below: wandering, widening, landing
+// on ledges that stick out (which drain again from their own edges) or dripping free where the wall
+// steps back. Anything sheltered under an overhang stays dry. Returns water per block face / top.
+const DIRS4 = [[1, 0], [-1, 0], [0, 1], [0, -1]];
+function simulateWater(W, H, D, solid, P, R) {
+  const at = (x, y, z) => (y * D + z) * W + x;
+  const flow = new Float32Array(W * H * D), through = new Float32Array(W * H * D);
+  const isTop = (x, y, z) => solid(x, y, z) && !solid(x, y + 1, z);
+  for (let x = 0; x < W; x++) for (let z = 0; z < D; z++) for (let y = H - 1; y >= 0; y--) if (solid(x, y, z)) { through[at(x, y, z)] += 1; break; }
+  const bump = vnoise(W, D, 3, R), focus = (1 - P.streakCoverage) * 4, decay = Math.exp(-1 / Math.max(2, P.streakLength));
+  const runDown = (wx, y, wz, dx, dz, amt) => {                        // down the face of column (wx, wz), open towards (dx, dz)
+    const tx = -dz, tz = dx;
+    for (let yy = y; yy >= 0 && amt > 0.02; yy--) {
+      if (yy < y) {
+        if (solid(wx + dx, yy, wz + dz)) { through[at(wx + dx, yy, wz + dz)] += amt * 0.85; return; }   // lands on a ledge below
+        if (!solid(wx, yy, wz)) {                                                                         // wall steps back: free fall
+          for (let y2 = yy - 1; y2 >= 0; y2--) if (solid(wx, y2, wz)) { through[at(wx, y2, wz)] += amt * 0.75; break; }
+          return;
+        }
+      }
+      flow[at(wx, yy, wz)] += amt;
+      const spread = Math.min(0.45, (y - yy) * 0.03);                 // streaks widen as they run
+      for (const s of [1, -1]) for (let r = 1; r <= 1; r++) {
+        const hx = wx + tx * s * r, hz = wz + tz * s * r;
+        if (!solid(hx, yy, hz) || solid(hx + dx, yy, hz + dz)) break;
+        flow[at(hx, yy, hz)] += amt * spread / r;
+      }
+      if (R.f() < 0.05) {                                                // and wander a little
+        const s = R.f() < 0.5 ? 1 : -1, nx = wx + tx * s, nz = wz + tz * s;
+        if (solid(nx, yy, nz) && !solid(nx + dx, yy, nz + dz)) { wx = nx; wz = nz; }
+      }
+      amt *= decay;
+    }
+  };
+  for (let y = H - 1; y >= 0; y--) {
+    const cells = [];
+    for (let z = 0; z < D; z++) for (let x = 0; x < W; x++) if (isTop(x, y, z)) cells.push([x, z]);
+    if (!cells.length) continue;
+    // distance to the nearest edge, roughened so water gathers at a few low points
+    const dist = new Map(), q = [];
+    for (const [x, z] of cells) if (DIRS4.some(([dx, dz]) => !solid(x + dx, y, z + dz))) { dist.set(x * D + z, 0); q.push([x, z]); }
+    for (let h = 0; h < q.length; h++) {
+      const [x, z] = q[h], d = dist.get(x * D + z);
+      for (const [dx, dz] of DIRS4) { const k = (x + dx) * D + z + dz; if (!dist.has(k) && isTop(x + dx, y, z + dz)) { dist.set(k, d + 1); q.push([x + dx, z + dz]); } }
+    }
+    const height = (x, z) => (dist.get(x * D + z) ?? 99) + focus * bump[x * D + z];
+    cells.sort((a, b) => height(b[0], b[1]) - height(a[0], a[1]));
+    for (const [x, z] of cells) {
+      const w = through[at(x, y, z)]; if (!w) continue;
+      let best = null, bh = height(x, z);
+      for (const [dx, dz] of DIRS4) if (isTop(x + dx, y, z + dz) && height(x + dx, z + dz) < bh) { bh = height(x + dx, z + dz); best = [x + dx, z + dz]; }
+      if (best) { through[at(best[0], y, best[1])] += w; continue; }
+      const open = DIRS4.filter(([dx, dz]) => !solid(x + dx, y, z + dz));   // an edge low point: drip over
+      for (const [dx, dz] of open) runDown(x, y, z, dx, dz, w / open.length);
+    }
+  }
+  return { flow, through };
+}
+
+// Shared final pass for straight walls and corners: water -> dirt, then a block for every solid cell.
+// faceFn(x, y, z, open, wet) picks the block for a side-facing surface.
+function paint(W, H, D, occ, P, faceFn) {
+  const at = (x, y, z) => (y * D + z) * W + x;
+  const solid = (x, y, z) => x >= 0 && y >= 0 && z >= 0 && x < W && y < H && z < D && occ[at(x, y, z)] === 1;
+  const water = simulateWater(W, H, D, solid, P, new Rng(P.seed * 53 + 11));
+  const roof = makeTop(W, D, P, P.seed * 17 + 5), k = P.streakStrength;
+  const { keys, id } = keyTable(), data = new Uint16Array(W * H * D), dirt = new Float32Array(W * H * D);
+  for (let y = 0; y < H; y++) for (let z = 0; z < D; z++) for (let x = 0; x < W; x++) {
+    const i = at(x, y, z); if (!occ[i]) continue;
+    const o = { n: !solid(x, y, z - 1), s: !solid(x, y, z + 1), e: !solid(x + 1, y, z), w: !solid(x - 1, y, z), u: !solid(x, y + 1, z), d: !solid(x, y - 1, z) };
+    const side = o.n || o.s || o.e || o.w;
+    let b;
+    if (!side && !o.u && !o.d) b = P.palette.interior;
+    else if (o.u && !side) { dirt[i] = Math.min(0.5, k * 0.12 * Math.log1p(Math.max(0, water.through[i] - 1) / 3)); b = roof.block(x, y, z, edgeDist(solid, x, y, z), dirt[i]); }
+    else { dirt[i] = Math.min(0.5, k * 0.22 * Math.log1p(water.flow[i] / 1.5)); b = faceFn(x, y, z, o, dirt[i]); }
+    data[i] = id(b);
+  }
+  return { data, keys, id, dirt, at };
 }
 
 // ------------------------------------------------------------------ grids: trim, rotate, compose
@@ -825,7 +906,7 @@ export function rotateGrid(g, q) {
   if (!q) return g;
   const { W, H, D, data } = g;
   const W2 = q % 2 ? D : W, D2 = q % 2 ? W : D;
-  const out = new Uint16Array(W2 * H * D2);
+  const out = new Uint16Array(W2 * H * D2), dirt = g.dirt && new Float32Array(W2 * H * D2);
   const keys = g.keys.map(k => turnKey(k, q));
   for (let y = 0; y < H; y++) for (let z = 0; z < D; z++) for (let x = 0; x < W; x++) {
     const v = data[(y * D + z) * W + x]; if (!v) continue;
@@ -834,8 +915,9 @@ export function rotateGrid(g, q) {
     else if (q === 2) { nx = W - 1 - x; nz = D - 1 - z; }
     else { nx = z; nz = W - 1 - x; }
     out[(y * D2 + nz) * W2 + nx] = v;
+    if (dirt) dirt[(y * D2 + nz) * W2 + nx] = g.dirt[(y * D + z) * W + x];
   }
-  return { ...g, W: W2, D: D2, data: out, keys };
+  return { ...g, W: W2, D: D2, data: out, dirt, keys };
 }
 // pieces: [{ g, x, z }] -> one grid covering all of them
 export function composeGrids(pieces) {
@@ -885,32 +967,23 @@ function generateCorner(P) {
     }
     if (ok) occ[at(x, y, z)] = 1;
   }
-  const solid = (x, y, z) => x >= 0 && y >= 0 && z >= 0 && x < L && y < H && z < L && occ[at(x, y, z)] === 1;
-  const { keys, id: kid } = keyTable();
-  const data = new Uint16Array(L * H * L), pal = P.palette, roof = makeTop(L, L, P, P.seed * 17 + 5);
-  for (let y = 0; y < H; y++) for (let z = 0; z < L; z++) for (let x = 0; x < L; x++) {
-    if (!solid(x, y, z)) continue;
-    const nN = !solid(x, y, z - 1), nW = !solid(x - 1, y, z), nS = !solid(x, y, z + 1), nE = !solid(x + 1, y, z);
-    let b;
-    const nU = !solid(x, y + 1, z);
-    if (!(nN || nW || nS || nE || nU || !solid(x, y - 1, z))) b = pal.interior;
-    else if (nU && !(nN || nW || nS || nE)) b = roof.block(x, z, edgeDist(solid, x, y, z));
-    else if (nN && z < D) b = outer.faceBlock(L - 1 - x, y, true);
-    else if (nW && x < D) b = outer.faceBlock(L + z, y, true);
-    else if (nS && z < D && x >= D) b = inner.faceBlock(n + x - D, y, true);
-    else if (nE && x < D && z >= D) b = inner.faceBlock(L - 1 - z, y, true);
-    else if (nE && z < D) b = endA.faceBlock(D - 1 - z, y, true);
-    else if (nS && x < D) b = endB.faceBlock(x, y, true);
-    else b = z < D ? outer.faceBlock(L - 1 - x, y, false) : outer.faceBlock(L + z, y, false);
-    data[at(x, y, z)] = kid(b);
-  }
+  const { data, keys, id: kid, dirt } = paint(L, H, L, occ, P, (x, y, z, o, wet) => {
+    if (o.n && z < D) return outer.faceBlock(L - 1 - x, y, true, wet);
+    if (o.w && x < D) return outer.faceBlock(L + z, y, true, wet);
+    if (o.s && z < D && x >= D) return inner.faceBlock(n + x - D, y, true, wet);
+    if (o.e && x < D && z >= D) return inner.faceBlock(L - 1 - z, y, true, wet);
+    if (o.e && z < D) return endA.faceBlock(D - 1 - z, y, true, wet);
+    if (o.s && x < D) return endB.faceBlock(x, y, true, wet);
+    return z < D ? outer.faceBlock(L - 1 - x, y, false, wet) : outer.faceBlock(L + z, y, false, wet);
+  });
+  const pal = P.palette;
   // iron bars, mapped from skin space onto the two faces of each skin (louvres turn with the face)
   const place = (x, y, z, v) => { if (x >= 0 && y >= 0 && z >= 0 && x < L && y < H && z < L && !data[at(x, y, z)]) data[at(x, y, z)] = kid(pal.bars + '|' + v); };
   const turn = (v, alongX) => v === 'h' && !alongX ? 'z' : v;
   fixtures(outer, (u, y, d, v) => u < L ? place(L - 1 - u, y, d, turn(v, true)) : place(d, y, u - L, turn(v, false)));
   fixtures(inner, (u, y, d, v) => u < n ? place(D - 1 - d, y, L - 1 - u, turn(v, false)) : place(D + (u - n), y, D - 1 - d, turn(v, true)));
   const top = trimTop(L, H, L, data);
-  const g = { W: L, H: top, D: L, data: data.subarray(0, top * L * L), keys, backLayout: innerLayout };
+  const g = { W: L, H: top, D: L, data: data.subarray(0, top * L * L), dirt: dirt.subarray(0, top * L * L), keys, backLayout: innerLayout };
   return rotateGrid(g, 2);
 }
 
@@ -935,7 +1008,11 @@ export function applyIvy(g, P) {
   const pal = P.palette, dampOf = new Map();
   (pal.bands || []).forEach((band, b) => band.forEach(k => { if (!dampOf.has(k)) dampOf.set(k, b / 8); }));
   for (const r of ['grime', 'crack', 'deep', 'rust2']) if (pal[r]) dampOf.set(pal[r], 0.95);
-  const damp = (x, y, z) => { const v = data[at(x, y, z)]; return v ? (dampOf.get(keys[v]) ?? 0.4) : 0; };
+  const damp = (x, y, z) => {                                         // wet streaks from the rain simulation, plus dark blocks
+    const v = data[at(x, y, z)]; if (!v) return 0;
+    const b = dampOf.get(keys[v]) ?? 0.4;
+    return g.dirt ? Math.min(1, 0.35 * b + 1.6 * g.dirt[at(x, y, z)]) : b;
+  };
   const shadeK = P.ivyShade ?? 0.7;
   const cl = vnoise(W, D, Math.max(2, P.ivyCluster), R);
   const clump = (x, z) => cl[Math.max(0, Math.min(W - 1, x)) * D + Math.max(0, Math.min(D - 1, z))];
@@ -1089,7 +1166,7 @@ export const DEFAULTS = {
   channels: 0, channelPairs: true, doorways: 0, doorWidth: 3, doorHeight: 5, doorDepth: 8, windows: 0,
   tieChance: 0.4, tieSpacing: 5,
   baseTone: 0.20, panelTone: 0.05, largeNoise: 0.16, fineNoise: 0.07, speckle: 0.05, patchSize: 2.2,
-  streakStrength: 1.05, streakLength: 32, streakCoverage: 0.5, grimeHeight: 10, grimeStrength: 0.30, moss: 1.0,
+  streakStrength: 1.05, streakLength: 32, streakCoverage: 0.35, grimeHeight: 10, grimeStrength: 0.30, moss: 1.0,
   cracks: 2, crackRust: 0.4, rust: 1.0, chips: 0.5, pockmarks: 0.003,
   palette: DEFAULT_PALETTE,
   piece: 'straight', cornerPreview: true,
