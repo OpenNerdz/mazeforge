@@ -1,4 +1,4 @@
-import { generate, DEFAULTS, PRESETS, LAYOUT_NAMES, BANDS, Rng, rotateGrid, composeGrids } from './gen.js';
+import { generate, DEFAULTS, PRESETS, LAYOUT_NAMES, Rng, rotateGrid, composeGrids } from './gen.js';
 import { writeSchem, readSchem } from './schem.js';
 import { Viewer } from './viewer.js';
 import { effectivePalette } from './palette.js';
@@ -353,30 +353,30 @@ function updateUndo() { $('#undo').disabled = hpos <= 0; $('#redo').disabled = h
 
 // ------------------------------------------------------------------ generation
 let current = null, timer = 0, viewing = false, firstShow = true;
+// the design itself (exported) and what the viewport shows (tiles, or a corner with walls attached)
+function buildScene() {
+  const palette = effPal();
+  if (P.piece !== 'corner') {
+    const tiles = Array.from({ length: +$('#tiles').value }, (_, k) => generate({ ...P, palette, seed: P.seed + k * 17 }));
+    return { design: tiles[0], shown: tiles };
+  }
+  const corner = generate({ ...P, palette });
+  if (!P.cornerPreview) return { design: corner, shown: [corner] };
+  // straight walls on both arms: west of the south-facing arm, and north of the east-facing arm
+  const wall = s => generate({ ...P, palette, piece: 'straight', width: 20, seed: P.seed + s });
+  const a = wall(101), b = rotateGrid(wall(202), 3), L = corner.W, D = P.thickness;
+  return { design: corner, shown: [composeGrids([{ g: corner, x: 0, z: 0 }, { g: a, x: -a.W, z: L - D }, { g: b, x: L - D, z: -b.D }])] };
+}
 function regenerate() {
   if (viewing) return;
   clearTimeout(timer); $('#busy').classList.add('on');
   timer = setTimeout(() => {
     try {
-      const t0 = performance.now();
-      const tiles = +$('#tiles').value;
-      const grids = [];
-      const palette = effPal();
-      let shownGrids;
-      if (P.piece === 'corner') {
-        const c = generate({ ...P, palette }); grids.push(c);
-        if (P.cornerPreview) {
-          // straight walls on both arms: west of the south-facing arm, and north of the east-facing arm
-          const wall = s => generate({ ...P, palette, piece: 'straight', width: 20, seed: P.seed + s });
-          const a = wall(101), b = rotateGrid(wall(202), 3), L = c.W, D = P.thickness;
-          shownGrids = [composeGrids([{ g: c, x: 0, z: 0 }, { g: a, x: -a.W, z: L - D }, { g: b, x: L - D, z: -b.D }])];
-        }
-      } else for (let k = 0; k < tiles; k++) grids.push(generate({ ...P, palette, seed: P.seed + k * 17 }));
-      const ms = performance.now() - t0;
-      current = grids[0];
-      const wasCorner = viewer.isoDir != null, isCorner = P.piece === 'corner';
-      viewer.isoDir = isCorner ? [0.8, 0.5, 0.9] : null;             // corners: look at the outer (south + east) faces
-      const shown = viewer.show(shownGrids || grids, { keepCamera: !firstShow && wasCorner === isCorner }); firstShow = false;
+      const t0 = performance.now(), scene = buildScene(), ms = performance.now() - t0;
+      current = scene.design;
+      const corner = P.piece === 'corner', sameKind = (viewer.isoDir != null) === corner;
+      viewer.isoDir = corner ? [0.8, 0.5, 0.9] : null;                // corners: look at the outer (south + east) faces
+      const shown = viewer.show(scene.shown, { keepCamera: !firstShow && sameKind }); firstShow = false;
       showStats(current, ms, shown);
     } catch (e) { console.error(e); toast('Generation failed: ' + e.message, 'err'); }
     $('#busy').classList.remove('on');

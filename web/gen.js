@@ -536,11 +536,7 @@ export class Skin {
   faceBlock(x, y, face) {
     const P = this.P, pal = P.palette, R = this.R, i = this.i(x, y), V = this.V;
     if (face && this.special.has(i)) return this.special.get(i);
-    const v = V[i] + (face ? 0 : 0.05);
-    let band = BANDS.length - 1;
-    for (let b = 0; b < BANDS.length; b++) if (v < BANDS[b]) { band = b; break; }
-    const opts = pal.bands[band].length ? pal.bands[band] : nearestBand(pal.bands, band);
-    let b = opts[Math.floor(((this.pick[i] + 0.12 * R.f()) % 1) * opts.length) % opts.length];
+    let b = shadeBlock(pal, V[i] + (face ? 0 : 0.05), this.pick[i], R);
     const ru = this.rust[i], mossK = P.moss;
     if (face && ru > 0.7) b = pal.rust;
     else if (face && ru > 0.4) b = R.f() < 0.4 ? pal.rust : (pal.rust2 || pal.rust);
@@ -553,12 +549,32 @@ export class Skin {
   }
 }
 export const BANDS = [0.10, 0.18, 0.26, 0.34, 0.44, 0.54, 0.66, 0.80, 99];
-function nearestBand(bands, i) {
-  for (let d = 1; d < bands.length; d++) {
-    if (bands[i - d] && bands[i - d].length) return bands[i - d];
-    if (bands[i + d] && bands[i + d].length) return bands[i + d];
-  }
-  return ['stone'];
+// pick a block for darkness v from the palette's shade bands; pick = patch noise so neighbours match
+function shadeBlock(pal, v, pick, R) {
+  let band = BANDS.length - 1;
+  for (let b = 0; b < BANDS.length; b++) if (v < BANDS[b]) { band = b; break; }
+  let opts = pal.bands[band];
+  for (let d = 1; !opts.length && d < BANDS.length; d++) opts = pal.bands[band - d]?.length ? pal.bands[band - d] : pal.bands[band + d] || [];
+  if (!opts.length) opts = ['stone'];
+  return opts[Math.floor(((pick + 0.12 * R.f()) % 1) * opts.length) % opts.length];
+}
+// block ids for a grid: keys[0] is always air
+function keyTable(keys = ['air']) {
+  const idx = new Map(keys.map((k, i) => [k, i]));
+  return { keys, id(b) { let v = idx.get(b); if (v === undefined) { v = keys.length; keys.push(b); idx.set(b, v); } return v; } };
+}
+// 1 or 2 = distance to the nearest open side (dirt gathers along edges), 9 = well inside
+function edgeDist(solid, x, y, z) {
+  for (let d = 1; d <= 2; d++) if (!solid(x, y, z + d) || !solid(x, y, z - d) || !solid(x + d, y, z) || !solid(x - d, y, z)) return d;
+  return 9;
+}
+// depth of an end skin's relief at (e, y), limited to `relief`
+const endDepth = (skin, e, y, relief) => { if (!relief) return 0; const v = skin.F[e * skin.H + y]; return v >= NONE ? 0 : Math.min(v, relief); };
+// iron bars in port-holes and vent louvres; put(u, y, depth, variant) maps skin space to the world
+function fixtures(skin, put) {
+  for (const { cx, cy, r, f } of skin.bars) for (let u = cx - r; u <= cx + r; u++) for (let y = cy - r; y <= cy + r; y++)
+    if (Math.hypot(u - cx, y - cy) <= r - 0.4 && (u - cx) % 2) put(u, y, f + 1, 'v');
+  for (const { x, y, z } of skin.louvre) put(x, y, z, 'h');
 }
 
 // ------------------------------------------------------------------ top surfaces
@@ -575,11 +591,7 @@ function makeTop(W, D, P, seed) {
   return {
     block(x, z, edgeDist) {
       const i = x * D + z;
-      const v = V[i] + (edgeDist <= 1 ? 0.06 : 0);                    // dirt collects along the edges
-      let band = BANDS.length - 1;
-      for (let b = 0; b < BANDS.length; b++) if (v < BANDS[b]) { band = b; break; }
-      const opts = pal.bands[band].length ? pal.bands[band] : nearestBand(pal.bands, band);
-      let b = opts[Math.floor(((pick[i] + 0.12 * R.f()) % 1) * opts.length) % opts.length];
+      let b = shadeBlock(pal, V[i] + (edgeDist <= 1 ? 0.06 : 0), pick[i], R);   // dirt collects along the edges
       const puddle = Math.max(0, wet[i] - 0.58) / 0.42;
       if (R.f() < (0.05 + 0.5 * puddle) * P.moss) b = pal.grime;
       else if (R.f() < 0.015 + 0.02 * P.chips) b = pal.crack;
@@ -622,7 +634,6 @@ export const LAYOUTS = {
       s.stack(a, b, hb, tops[i], { split: false, hmin: Math.max(5, P.tierMin - 1), hmax: Math.max(6, P.tierMax - 1) });
     });
     if (P.fins) s.fins(0, W, R.int(P.finHeightMin, P.finHeightMax));
-    s._tallSpan = spans[tallest];
   },
   cantilever(s) {
     const P = s.P, R = s.R, W = s.W;
@@ -759,15 +770,9 @@ function combine(front, back, W, H, D, P) {
   // each end face gets its own designed skin (width = thickness), with joints aligned to the front's tiers
   const ends = [endSkin(front, 0, H, D, P, 0), endSkin(front, W - 1, H, D, P, 1)];
   const relief = P.endDetail ? Math.max(0, P.endRelief ?? 2) : 0;
-  const eF = (side, z, y) => {
-    if (!relief) return 0;
-    const v = ends[side].F[(side ? D - 1 - z : z) * H + y];
-    return v >= NONE ? 0 : Math.min(v, relief);
-  };
   const solid = (x, y, z) => x >= 0 && x < W && y >= 0 && y < H && z >= 0 && z < D && has[x * H + y]
-    && z >= zb[x * H + y] && z <= zf[x * H + y] && x >= eF(0, z, y) && x <= W - 1 - eF(1, z, y);
-  const keys = ['air'], idx = new Map([['air', 0]]);
-  const kid = b => { let v = idx.get(b); if (v === undefined) { v = keys.length; keys.push(b); idx.set(b, v); } return v; };
+    && z >= zb[x * H + y] && z <= zf[x * H + y] && x >= endDepth(ends[0], z, y, relief) && x <= W - 1 - endDepth(ends[1], D - 1 - z, y, relief);
+  const { keys, id: kid } = keyTable();
   const data = new Uint16Array(W * H * D);
   const at = (x, y, z) => (y * D + z) * W + x;   // schematic order: x fastest, then z, then y
   const roof = makeTop(W, D, P, P.seed * 17 + 5);
@@ -780,10 +785,7 @@ function combine(front, back, W, H, D, P) {
       let b;
       const oU = !solid(x, y + 1, z);
       if (!(oF || oB || oL || oR) && !oU && solid(x, y - 1, z)) b = pal.interior;
-      else if (oU && !(oF || oB || oL || oR)) {                   // top surface
-        let e = 9; for (let d = 1; d <= 2 && e === 9; d++) if (!solid(x, y, z + d) || !solid(x, y, z - d) || !solid(x + d, y, z) || !solid(x - d, y, z)) e = d;
-        b = roof.block(x, z, e);
-      }
+      else if (oU && !(oF || oB || oL || oR)) b = roof.block(x, z, edgeDist(solid, x, y, z));   // top surface
       else if (!oF && !oB && (oL || oR)) {                     // end face
         const side = oL && (!oR || x < W / 2) ? 0 : 1;
         b = ends[side].faceBlock(side ? D - 1 - z : z, y, true);
@@ -793,18 +795,11 @@ function combine(front, back, W, H, D, P) {
       data[at(x, y, z)] = kid(b);
     }
   }
-  for (const [side, sgn] of [[front, 1], [back, -1]]) {
-    const place = (x, y, depth, b) => {
-      const gx = sgn > 0 ? x : W - 1 - x, gz = sgn > 0 ? D - 1 - depth : depth;
-      if (gx >= 0 && gx < W && y >= 0 && y < H && gz >= 0 && gz < D && data[at(gx, y, gz)] === 0) data[at(gx, y, gz)] = kid(b);
-    };
-    for (const { cx, cy, r, f } of side.bars) for (let x = cx - r; x <= cx + r; x++) for (let y = cy - r; y <= cy + r; y++)
-      if (Math.hypot(x - cx, y - cy) <= r - 0.4 && (x - cx) % 2) place(x, y, f + 1, pal.bars + '|v');
-    for (const { x, y, z } of side.louvre) place(x, y, z, pal.bars + '|h');
-  }
-  // trim empty rows at the top
-  let top = 0;
-  for (let y = 0; y < H; y++) for (let z = 0; z < D && top <= y; z++) for (let x = 0; x < W; x++) if (data[at(x, y, z)]) { top = y + 1; break; }
+  for (const [side, sgn] of [[front, 1], [back, -1]]) fixtures(side, (x, y, depth, v) => {
+    const gx = sgn > 0 ? x : W - 1 - x, gz = sgn > 0 ? D - 1 - depth : depth;
+    if (gx >= 0 && gx < W && y >= 0 && y < H && gz >= 0 && gz < D && data[at(gx, y, gz)] === 0) data[at(gx, y, gz)] = kid(pal.bars + '|' + v);
+  });
+  const top = trimTop(W, H, D, data);
   return { W, H: top, D, data: data.subarray(0, top * D * W), keys, backLayout: back.layoutName };
 }
 
@@ -846,9 +841,9 @@ export function rotateGrid(g, q) {
 export function composeGrids(pieces) {
   const x0 = Math.min(...pieces.map(p => p.x)), z0 = Math.min(...pieces.map(p => p.z));
   const W = Math.max(...pieces.map(p => p.x + p.g.W)) - x0, D = Math.max(...pieces.map(p => p.z + p.g.D)) - z0, H = Math.max(...pieces.map(p => p.g.H));
-  const data = new Uint16Array(W * H * D), keys = ['air'], idx = new Map([['air', 0]]);
+  const data = new Uint16Array(W * H * D), { keys, id } = keyTable();
   for (const { g, x, z } of pieces) {
-    const map = g.keys.map(k => { let v = idx.get(k); if (v === undefined) { v = keys.length; keys.push(k); idx.set(k, v); } return v; });
+    const map = g.keys.map(k => id(k));
     for (let y = 0; y < g.H; y++) for (let zz = 0; zz < g.D; zz++) for (let xx = 0; xx < g.W; xx++) {
       const v = g.data[(y * g.D + zz) * g.W + xx]; if (v) data[(y * D + zz + z - z0) * W + xx + x - x0] = map[v];
     }
@@ -871,8 +866,6 @@ function generateCorner(P) {
   const clampF = v => v >= NONE ? null : Math.min(v, D - core - 1);
   const oF = (u, y) => clampF(outer.F[u * H + y]);
   const iF = (u, y) => clampF(inner.F[u * H + y]);
-  const eFa = (e, y) => relief ? Math.min(relief, endA.F[e * H + y] >= NONE ? 0 : endA.F[e * H + y]) : 0;
-  const eFb = (e, y) => relief ? Math.min(relief, endB.F[e * H + y] >= NONE ? 0 : endB.F[e * H + y]) : 0;
   const occ = new Uint8Array(L * H * L), at = (x, y, z) => (y * L + z) * L + x;
   for (let y = 0; y < H; y++) for (let z = 0; z < L; z++) for (let x = 0; x < L; x++) {
     const armA = z < D, armB = x < D;
@@ -884,17 +877,16 @@ function generateCorner(P) {
     if (armB) ok &&= ow === null ? x >= mid : x >= ow;
     if (armA && !armB) {                          // arm A, inner face looks south
       const i = iF(n + x - D, y), lim = i === null ? D - 1 - mid : D - 1 - Math.min(i, D - core - (on ?? mid));
-      ok &&= z <= lim; ok &&= x <= L - 1 - eFa(D - 1 - z, y);
+      ok &&= z <= lim && x <= L - 1 - endDepth(endA, D - 1 - z, y, relief);
     }
     if (armB && !armA) {                          // arm B, inner face looks east
       const i = iF(L - 1 - z, y), lim = i === null ? D - 1 - mid : D - 1 - Math.min(i, D - core - (ow ?? mid));
-      ok &&= x <= lim; ok &&= z <= L - 1 - eFb(x, y);
+      ok &&= x <= lim && z <= L - 1 - endDepth(endB, x, y, relief);
     }
     if (ok) occ[at(x, y, z)] = 1;
   }
   const solid = (x, y, z) => x >= 0 && y >= 0 && z >= 0 && x < L && y < H && z < L && occ[at(x, y, z)] === 1;
-  const keys = ['air'], idx = new Map([['air', 0]]);
-  const kid = b => { let v = idx.get(b); if (v === undefined) { v = keys.length; keys.push(b); idx.set(b, v); } return v; };
+  const { keys, id: kid } = keyTable();
   const data = new Uint16Array(L * H * L), pal = P.palette, roof = makeTop(L, L, P, P.seed * 17 + 5);
   for (let y = 0; y < H; y++) for (let z = 0; z < L; z++) for (let x = 0; x < L; x++) {
     if (!solid(x, y, z)) continue;
@@ -902,10 +894,7 @@ function generateCorner(P) {
     let b;
     const nU = !solid(x, y + 1, z);
     if (!(nN || nW || nS || nE || nU || !solid(x, y - 1, z))) b = pal.interior;
-    else if (nU && !(nN || nW || nS || nE)) {
-      let e = 9; for (let d = 1; d <= 2 && e === 9; d++) if (!solid(x, y, z + d) || !solid(x, y, z - d) || !solid(x + d, y, z) || !solid(x - d, y, z)) e = d;
-      b = roof.block(x, z, e);
-    }
+    else if (nU && !(nN || nW || nS || nE)) b = roof.block(x, z, edgeDist(solid, x, y, z));
     else if (nN && z < D) b = outer.faceBlock(L - 1 - x, y, true);
     else if (nW && x < D) b = outer.faceBlock(L + z, y, true);
     else if (nS && z < D && x >= D) b = inner.faceBlock(n + x - D, y, true);
@@ -915,20 +904,13 @@ function generateCorner(P) {
     else b = z < D ? outer.faceBlock(L - 1 - x, y, false) : outer.faceBlock(L + z, y, false);
     data[at(x, y, z)] = kid(b);
   }
-  // iron bars in port-holes and vent louvres, mapped from skin space to the world
-  const place = (x, y, z, b) => { if (x >= 0 && y >= 0 && z >= 0 && x < L && y < H && z < L && !data[at(x, y, z)]) data[at(x, y, z)] = kid(b); };
-  const mapOuter = (u, y, d, b) => u < L ? place(L - 1 - u, y, d, b) : place(d, y, u - L, b);
-  const mapInner = (u, y, d, b) => u < n ? place(D - 1 - d, y, L - 1 - u, b) : place(D + (u - n), y, D - 1 - d, b);
-  for (const [sk, map, W2, cut] of [[outer, mapOuter, 2 * L, L], [inner, mapInner, 2 * n, n]]) {
-    for (const { cx, cy, r, f } of sk.bars) for (let u = cx - r; u <= cx + r; u++) for (let y = cy - r; y <= cy + r; y++)
-      if (u >= 0 && u < W2 && Math.hypot(u - cx, y - cy) <= r - 0.4 && (u - cx) % 2) map(u, y, f + 1, pal.bars + '|v');
-    for (const { x: u, y, z: d } of sk.louvre) {
-      const alongX = sk === outer ? u < cut : u >= cut;
-      map(u, y, d, pal.bars + (alongX ? '|h' : '|z'));
-    }
-  }
+  // iron bars, mapped from skin space onto the two faces of each skin (louvres turn with the face)
+  const place = (x, y, z, v) => { if (x >= 0 && y >= 0 && z >= 0 && x < L && y < H && z < L && !data[at(x, y, z)]) data[at(x, y, z)] = kid(pal.bars + '|' + v); };
+  const turn = (v, alongX) => v === 'h' && !alongX ? 'z' : v;
+  fixtures(outer, (u, y, d, v) => u < L ? place(L - 1 - u, y, d, turn(v, true)) : place(d, y, u - L, turn(v, false)));
+  fixtures(inner, (u, y, d, v) => u < n ? place(D - 1 - d, y, L - 1 - u, turn(v, false)) : place(D + (u - n), y, D - 1 - d, turn(v, true)));
   const top = trimTop(L, H, L, data);
-  const g = { W: L, H: top, D: L, data: data.subarray(0, top * L * L), keys, backLayout: innerLayout, corner: true, arm: L };
+  const g = { W: L, H: top, D: L, data: data.subarray(0, top * L * L), keys, backLayout: innerLayout };
   return rotateGrid(g, 2);
 }
 
@@ -944,8 +926,7 @@ export function applyIvy(g, P) {
   const R = new Rng((P.seed * 131 + (P.ivyVariation || 1) * 977) >>> 0);
   const at = (x, y, z) => (y * D + z) * W + x;
   const inb = (x, y, z) => x >= 0 && y >= 0 && z >= 0 && x < W && y < H && z < D;
-  const idx = new Map(keys.map((k, i) => [k, i]));
-  const kid = b => { let v = idx.get(b); if (v === undefined) { v = keys.length; keys.push(b); idx.set(b, v); } return v; };
+  const kid = keyTable(keys).id;
   const soft = keys.map(SOFT);
   const solid = (x, y, z) => inb(x, y, z) && data[at(x, y, z)] !== 0 && !soft[data[at(x, y, z)]];
   const free = (x, y, z) => inb(x, y, z) && data[at(x, y, z)] === 0;
@@ -1081,7 +1062,6 @@ export function applyIvy(g, P) {
     const x = k % W, z = Math.floor(k / W) % D, y = Math.floor(k / (W * D));
     if (inb(x, y, z) && !data[k] && solid(x, y - 1, z) && R.f() < 0.7) data[k] = kid('moss_carpet');
   }
-  g.ivyCount = vines.size;
   return g;
 }
 

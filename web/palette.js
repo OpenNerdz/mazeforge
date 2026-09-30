@@ -20,7 +20,7 @@ export function analyze(hex) {
 }
 const hueIn = (h, a, b) => a <= b ? h >= a && h <= b : h >= a || h <= b;
 
-export const ROLE_KEYS = ['grime', 'crack', 'deep', 'rust', 'rust2', 'paint', 'paint2', 'porthole', 'grilleFrame', 'hazardA', 'hazardB', 'interior'];
+const ROLE_KEYS = ['grime', 'crack', 'deep', 'rust', 'rust2', 'paint', 'paint2', 'porthole', 'grilleFrame', 'hazardA', 'hazardB', 'interior'];
 
 // returns { palette, sorted: [{k, L, h, s, r}], auto: Set(role) }
 export function effectivePalette(P, library) {
