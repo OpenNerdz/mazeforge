@@ -488,12 +488,49 @@ function download(bytes, name, type = 'application/octet-stream') {
   const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([bytes], { type })); a.download = name; a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 2000);
 }
 let targets = [];
-async function loadTargets() {
-  try { targets = (await (await fetch('/api/targets')).json()).targets; } catch { targets = []; }
-  const sel = new Set(LS.get('targets', targets.filter(t => t.default).map(t => t.path)));
-  $('#targets').innerHTML = targets.length ? targets.map((t, i) => `<label class="target"><input type="checkbox" data-i="${i}" ${sel.has(t.path) ? 'checked' : ''}><b>${t.label}</b><small>${t.path}</small></label>`).join('') : '<p class="muted">No WorldEdit folders found — use Download instead.</p>';
+function renderTargets(keep) {
+  const sel = keep || new Set(LS.get('targets', targets.filter(t => t.default).map(t => t.path)));
+  const row = (t, i) => `<label class="target${t.missing ? ' missing' : ''}"><input type="checkbox" data-i="${i}" ${sel.has(t.path) && !t.missing ? 'checked' : ''} ${t.missing ? 'disabled' : ''}>`
+    + `<b><span>${esc(t.label)}</span><span class="kind">${esc(t.kind)}</span></b>`
+    + (t.custom ? `<button type="button" class="btn icon quiet rm" data-rm="${esc(t.custom)}" data-tip="Remove this added folder"><svg class="i"><use href="#i-x"/></svg></button>` : '')
+    + `<small title="${esc(t.path)}">&lrm;${esc(t.short || t.path)}&lrm;</small></label>`;
+  const ready = targets.map((t, i) => [t, i]).filter(([t]) => t.worldedit || t.missing), later = targets.map((t, i) => [t, i]).filter(([t]) => !t.worldedit && !t.missing);
+  $('#targets').innerHTML = (ready.some(([t]) => t.kind !== 'This app') ? ready.map(([t, i]) => row(t, i)).join('') : '<p class="muted">No WorldEdit folders found. Add one below, or use Download.</p>')
+    + (later.length ? `<details ${later.some(([t]) => sel.has(t.path)) ? 'open' : ''}><summary>${later.length} more instance${later.length > 1 ? 's' : ''} without WorldEdit yet</summary>${later.map(([t, i]) => row(t, i)).join('')}</details>` : '');
 }
-const chosenTargets = () => [...document.querySelectorAll('#targets input:checked')].map(c => targets[+c.dataset.i].path);
+async function loadTargets() {
+  try { targets = (await (await fetch('/api/targets')).json()).targets || []; } catch { targets = []; }
+  renderTargets();
+}
+async function folders(body) {
+  const r = await fetch('/api/folders', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+  const j = await r.json(); if (!r.ok) throw new Error(j.error || r.statusText); return j;
+}
+async function addFolder(path) {
+  if (!path.trim()) return;
+  const keep = new Set(chosenTargets());
+  try {
+    const j = await folders({ add: path }); targets = j.targets; j.added.forEach(p => keep.add(p));
+    renderTargets(keep); $('#addPath').value = '';
+    toast(j.added.length ? `Added ${j.added.length} folder${j.added.length > 1 ? 's' : ''}` : 'Already in the list', 'ok');
+  } catch (err) { toast(err.message, 'err'); }
+}
+$('#addFolder').onclick = () => addFolder($('#addPath').value);
+$('#addPath').onkeydown = e => { if (e.key === 'Enter') { e.preventDefault(); addFolder($('#addPath').value); } };
+$('#pickFolder').onclick = async () => {
+  try {
+    const r = await fetch('/api/pick', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' });
+    const j = await r.json(); if (!r.ok) throw new Error(j.error || r.statusText);
+    if (j.path) addFolder(j.path);
+  } catch (err) { toast(err.message, 'err'); $('#addPath').focus(); }
+};
+$('#rescan').onclick = async () => { const keep = new Set(chosenTargets()); await loadTargets(); renderTargets(keep); toast(`Found ${targets.length - 1} folder${targets.length === 2 ? '' : 's'}`, 'ok'); };
+$('#targets').addEventListener('click', async e => {
+  const b = e.target.closest('[data-rm]'); if (!b) return;
+  e.preventDefault(); const keep = new Set(chosenTargets());
+  try { targets = (await folders({ remove: b.dataset.rm })).targets; renderTargets(keep); } catch (err) { toast(err.message, 'err'); }
+});
+const chosenTargets = () => [...document.querySelectorAll('#targets input:checked')].map(c => targets[+c.dataset.i]?.path).filter(Boolean);
 async function saveBytes(bytes, name) {
   const body = { name: safeName(name), subfolder: safeName($('#subfolder').value || ''), overwrite: $('#overwrite').checked, targets: chosenTargets(), data: b64(bytes) };
   const r = await fetch('/api/save', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });

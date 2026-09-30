@@ -1,0 +1,6 @@
+* text=auto eol=lf
+*.bat text eol=crlf
+*.png binary
+*.schem binary
+web/lib/** linguist-vendored
+web/textures/** linguist-vendored

@@ -1,0 +1,14 @@
+{
+  "name": "maze-structure-studio",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Design, preview and export Maze Runner-style wall structures for Minecraft as WorldEdit schematics.",
+  "type": "module",
+  "scripts": {
+    "start": "python3 server.py",
+    "test": "node tests/run.mjs"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

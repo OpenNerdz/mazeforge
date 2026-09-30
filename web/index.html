@@ -147,8 +147,13 @@
 <dialog id="dlgSave">
   <form method="dialog">
     <header><h3>Save to Minecraft</h3><button class="btn icon quiet" value="cancel" data-tip="Close"><svg class="i"><use href="#i-x"/></svg></button></header>
-    <p class="lead">WorldEdit schematics folders found on this PC</p>
+    <div class="tgt-head"><p class="lead">WorldEdit schematics folders found on this PC</p><button type="button" id="rescan" class="btn icon quiet" data-tip="Search again"><svg class="i"><use href="#i-spin"/></svg></button></div>
     <div id="targets" class="targets"></div>
+    <div class="addfolder">
+      <input id="addPath" class="field" placeholder="Not listed? Paste a Minecraft, instance or server folder" spellcheck="false">
+      <button type="button" id="pickFolder" class="btn" data-tip="Choose a folder on this PC"><svg class="i"><use href="#i-folder"/></svg>Browse</button>
+      <button type="button" id="addFolder" class="btn">Add</button>
+    </div>
     <label class="field-row">Subfolder <input id="subfolder" class="field" value="studio" spellcheck="false"></label>
     <label class="check"><input type="checkbox" id="overwrite"> Overwrite files with the same name</label>
     <label class="check" id="chunkRow"><input type="checkbox" id="chunked"> Split into chunks of <input type="number" id="chunkSize" class="field tiny" value="64" min="16" max="256"> blocks</label>

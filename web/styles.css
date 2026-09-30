@@ -291,12 +291,23 @@ dialog.wide { width: min(1100px, 94vw); }
 .check { display: flex; align-items: center; gap: 8px; color: var(--soft); cursor: pointer; }
 .copyrow { display: flex; gap: 6px; }
 .copyrow .field { flex: 1; }
-.targets { display: grid; gap: 6px; max-height: 220px; overflow-y: auto; }
-.target { display: grid; grid-template-columns: auto 1fr; gap: 1px 10px; padding: 8px 10px; border-radius: var(--r2); background: var(--raise); border: 1px solid var(--line); cursor: pointer; }
+.tgt-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: -4px; }
+.targets { display: grid; gap: 6px; max-height: 300px; overflow-y: auto; }
+.target { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: 1px 10px; align-items: center; padding: 8px 10px; border-radius: var(--r2); background: var(--raise); border: 1px solid var(--line); cursor: pointer; }
 .target:hover { border-color: var(--line2); }
-.target input { grid-row: span 2; margin-top: 3px; }
-.target small { color: var(--faint); font-size: 11px; word-break: break-all; }
+.target input { grid-row: span 2; }
+.target b { display: flex; align-items: center; gap: 6px; min-width: 0; font-weight: 600; }
+.target .kind { padding: 1px 6px; border-radius: var(--r1); background: var(--bg); color: var(--muted); font-size: 10.5px; font-weight: 500; white-space: nowrap; }
+.target small { grid-column: 2; overflow: hidden; color: var(--faint); font-size: 11px; white-space: nowrap; text-overflow: ellipsis; direction: rtl; text-align: left; }
+.target .rm { grid-row: span 2; grid-column: 3; }
+.target.missing { opacity: .6; }
+.targets details { display: grid; gap: 6px; }
+.targets summary { padding: 4px 2px; color: var(--muted); font-size: 12px; cursor: pointer; }
+.targets details[open] summary { margin-bottom: 6px; }
+.targets details .target + .target { margin-top: 6px; }
 .targets .muted { margin: 0; color: var(--muted); }
+.addfolder { display: flex; gap: 6px; }
+.addfolder .field { flex: 1; min-width: 0; }
 .progress { height: 3px; border-radius: 3px; background: var(--line2); overflow: hidden; }
 .progress div { width: 0; height: 100%; background: var(--accent); transition: width .15s; }
 .keys { display: grid; grid-template-columns: auto 1fr auto 1fr; gap: 10px 12px; align-items: center; margin: 4px 0; }
