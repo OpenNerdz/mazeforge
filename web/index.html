@@ -23,6 +23,7 @@
     <button id="redo" class="icon" title="Redo (Ctrl+Shift+Z)">↷</button>
     <button id="reseed" class="ghost" title="New random seed (R)">🎲 New seed</button>
     <button id="remix" class="ghost" title="Randomise layout and features (M)">✦ Remix</button>
+    <button id="seeds" class="ghost" title="Browse seeds as thumbnails (B)">▦ Seeds…</button>
   </div>
   <div class="tb-group right">
     <button id="open" class="ghost" title="Open a .schem file to preview">Open .schem</button>
@@ -34,7 +35,7 @@
 
 <div class="layout">
   <aside class="panel">
-    <div class="search"><input id="filter" placeholder="Search controls…" spellcheck="false"></div>
+    <div class="search"><input id="filter" placeholder="Search controls…" spellcheck="false"><button id="expandAll" class="icon" title="Expand all sections">⊞</button><button id="collapseAll" class="icon" title="Collapse all sections">⊟</button></div>
     <div id="controls"></div>
   </aside>
   <main class="stage">
@@ -88,6 +89,14 @@
   </form>
 </dialog>
 
+<dialog id="dlgSeeds" class="wide">
+  <form method="dialog">
+    <h3>Seed browser</h3>
+    <p class="muted">Same settings, different seeds. Click one to use it.</p>
+    <div id="seedGrid" class="seedgrid"></div>
+    <div class="actions"><button value="cancel" class="ghost">Close</button><button id="seedMore" class="primary">Next 12</button></div>
+  </form>
+</dialog>
 <input type="file" id="fileIn" accept=".schem" hidden>
 <div id="toasts"></div>
 <script type="module" src="app.js"></script>

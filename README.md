@@ -14,17 +14,31 @@ Design, preview and export Maze Runner-style wall structures for Minecraft (Worl
 4. **Batch…** exports many seeded variants at once (optionally numbered 1, 2, 3…).
 5. **Open .schem** previews any existing Sponge schematic.
 
-## Corner pieces
-Set **Piece → Corner (L-shape)**. Width becomes the arm length (measured on the outside). The outer faces
-(south + east) are one continuous design that wraps round the corner; the inner corner has its own design.
-*Show attached walls* previews it joined to straight walls (only the corner itself is exported).
-Paste it like the straight walls: stand in front of the left end facing north, `//paste -a`.
+## Pieces & whole mazes
+**Piece** picks the footprint: *Straight*, *Corner (L-shape)*, *T-junction*, *Crossroads* or *Whole maze*.
+Every piece is built by the same footprint builder: the outline is traced into faces, each face gets its own
+design, ends are capped, and corners wrap one design round continuously. Width is the arm length (outside).
+*Show attached walls* previews junctions joined to straight walls (only the piece itself is exported).
+**Whole maze** (Maze section) generates a seeded maze: grid size, corridor and wall width, *Loops* (how many
+dead ends get opened up) and an optional central **Glade** with a gate in each side.
+Paste any piece like the straight walls: stand at the front-left corner facing north, `//paste -a`.
+
+## Panels
+*Panel distinction* (Massing & relief) makes every slab read as its own cast panel: its own shade and
+block, calmer texture inside, and deeper, darker joints between slabs. 0 keeps the blended look.
+
+## Seed browser
+**Seeds…** (B) shows 12 thumbnails of the current settings with different seeds; click one to use it,
+*Next 12* for more. Generation runs in a background worker, so big mazes never freeze the UI.
 
 ## Rain & dirt
 Dirt comes from a rain simulation: rain lands on every top open to the sky, flows across each top to a few
 low drip points and runs down the face below — wandering, widening, landing on ledges that stick out and
-dripping again from their edges. Sheltered areas under overhangs stay clean. The same wet paths drive the
-moss and the ivy. Controls: *Rain dirt*, *Streak length*, *Drip spread* (Weathering).
+dripping again from their edges. Water also creeps back along the undersides of ledges (*Soffit creep*),
+wind drives rain onto the faces it blows at (*Wind from*, *Wind-driven rain*), sun dries the south faces
+(*Sun drying*) and heavy flow washes the middle of a streak cleaner than its edges (*Washing*).
+Sheltered areas under overhangs stay clean. The same wet paths drive the moss and the ivy.
+Each block's randomness is fixed per position, so moving a rain slider only changes blocks the water reaches.
 
 ## Ivy & vines
 A growth simulation run on the finished structure: strands take root on the ground, ledges and cracks, then
@@ -34,11 +48,12 @@ in dry sun; leafy mats form where it is densest and moss gathers on the ledges i
 from the vine above it) and leaves are exported as persistent, so nothing decays or drops after pasting.
 
 ## Shortcuts
-R new seed · M remix · E download · P screenshot · 1–6 camera views · Ctrl+Z / Ctrl+Shift+Z undo/redo · Ctrl+S save
+R new seed · M remix · B seed browser · E download · P screenshot · 1–6 camera views · Ctrl+Z / Ctrl+Shift+Z undo/redo · Ctrl+S save
 Double-click a slider to reset it. Orange dots mark settings changed from default.
 
 ## Files
-- `web/` — the app (generator `gen.js`, viewer `viewer.js`, schematic I/O `schem.js`)
+- `web/` — the app (generator `gen.js`, background `worker.js`, viewer `viewer.js`, schematic I/O `schem.js`)
+- `tests/run.mjs` — regression tests, run with `node tests/run.mjs` (all presets & pieces, vines, holes, roundtrip, rain)
 - `exports/` — a copy of everything you save
 - `server.py` — local server (127.0.0.1 only; writes only into detected WorldEdit folders)
 

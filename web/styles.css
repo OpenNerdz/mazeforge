@@ -34,7 +34,10 @@ select { height: 32px; padding: 0 8px; border-radius: var(--r); border: 1px soli
 .layout { display: grid; grid-template-columns: 360px 1fr; height: calc(100% - 56px); }
 .panel { background: var(--panel); border-right: 1px solid var(--line); overflow-y: auto; scrollbar-width: thin; scrollbar-color: var(--line2) transparent; }
 .search { position: sticky; top: 0; z-index: 2; background: var(--panel); padding: 12px 14px 8px; }
-.search input { width: 100%; height: 32px; padding: 0 10px; border-radius: var(--r); border: 1px solid var(--line2); background: var(--bg); }
+.search { display: flex; gap: 6px; }
+.search button { flex: none; width: 32px; height: 32px; font-size: 15px; color: var(--muted); }
+.search button:hover { color: var(--text); }
+.search input { flex: 1; min-width: 0; height: 32px; padding: 0 10px; border-radius: var(--r); border: 1px solid var(--line2); background: var(--bg); }
 
 /* ---------- sections */
 .sec { border-top: 1px solid var(--line); }
@@ -167,3 +170,13 @@ dialog .row.check { justify-content: flex-start; }
 .band.auto .chip { opacity: .9; }
 .paltools { display: flex; gap: 6px; }
 .paltools button { height: 26px; font-size: 12px; }
+
+/* ---------- seed browser */
+dialog.wide { width: min(1100px, 94vw); }
+.seedgrid { display: grid; grid-template-columns: repeat(6, 1fr); gap: 10px; }
+.seedcard { position: relative; border-radius: 10px; border: 1px solid var(--line2); background: #0b0c0d; aspect-ratio: 3 / 4; overflow: hidden; cursor: pointer; transition: border-color .15s, transform .12s; display: flex; align-items: flex-end; justify-content: center; }
+.seedcard:hover { border-color: var(--accent); transform: translateY(-2px); }
+.seedcard canvas { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; image-rendering: pixelated; }
+.seedcard span { position: relative; margin: 6px; padding: 1px 8px; border-radius: 10px; background: #000a; font-size: 11.5px; font-variant-numeric: tabular-nums; }
+.seedcard.cur { border-color: var(--accent); }
+.seedcard .wait { position: absolute; inset: 0; display: grid; place-items: center; color: var(--faint); font-size: 12px; }

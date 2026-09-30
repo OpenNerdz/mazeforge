@@ -102,12 +102,13 @@ export function textMask(text, font, height, widthScale) {
     res = { w: W, h: H, m };
   } else {
     const ss = 6, fam = font === 'Maze Block' ? 'Arial Black' : font;
-    const cv = document.createElement('canvas');
-    const ctx = cv.getContext('2d', { willReadFrequently: true });
+    const cv = typeof OffscreenCanvas !== 'undefined' ? new OffscreenCanvas(8, 8) : document.createElement('canvas');   // works in a worker too
+    let ctx = cv.getContext('2d', { willReadFrequently: true });
     const px = height * ss * 1.45;
     ctx.font = `900 ${px}px "${fam}", sans-serif`;
     const tw = Math.ceil(ctx.measureText(text).width) + ss * 4;
     cv.width = tw; cv.height = Math.ceil(px * 1.5);
+    ctx = cv.getContext('2d', { willReadFrequently: true });
     ctx.font = `900 ${px}px "${fam}", sans-serif`;
     ctx.fillStyle = '#fff'; ctx.textBaseline = 'middle'; ctx.fillText(text, ss * 2, cv.height / 2);
     const img = ctx.getImageData(0, 0, cv.width, cv.height).data;
@@ -221,6 +222,7 @@ export class Skin {
   }
   groove(x, y0, y1, f) {
     if (x < 0 || x >= this.W) return;
+    f += Math.round(2 * (this.P.panelContrast || 0));
     for (let y = Math.max(0, y0); y < Math.min(this.H, y1); y++) {
       const k = this.i(x, y); this.F[k] = Math.min(f, this.MAXF); this.dark[k] += 0.10; this.mono[k] = -2;
     }
@@ -256,10 +258,8 @@ export class Skin {
   // depth offset, its own tier heights (so joints never run the whole width) and its own skyline.
   massing(x0, x1, y, crownY, o = {}) {
     const P = this.P, R = this.R, bw = Math.max(8, P.bayWidth ?? 20);
-    let ranges = [[x0, x1]];
-    if (this.segments) for (const cut of this.segments) ranges = ranges.flatMap(([a, b]) => cut > a && cut < b ? [[a, cut], [cut, b]] : [[a, b]]);
     const bays = [], gaps = [];
-    for (const [a, b] of ranges) {
+    for (const [a, b] of [[x0, x1]]) {
       const wid = b - a;
       if (wid < bw * 1.4) { bays.push([a, b]); continue; }
       const n = Math.max(2, Math.round(wid / (bw * R.uniform(0.75, 1.25))));
@@ -328,7 +328,6 @@ export class Skin {
   }
   // ---------------------------------------------------------------- features
   free(x0, x1, y0, y1) {
-    if (this.segments) for (const b of this.segments) if (x0 < b && x1 > b) return false;
     for (let x = x0; x < x1; x++) for (let y = y0; y < y1; y++) {
       if (!this.inb(x, y)) return false;
       const k = this.i(x, y); if (this.lock[k] || this.F[k] === NONE) return false;
@@ -414,13 +413,8 @@ export class Skin {
         if (score > best) { best = score; host = m; }
       }
     }
-    let hx0 = host ? host.x0 : 0, hx1 = host ? host.x1 : this.W;
+    const hx0 = host ? host.x0 : 0, hx1 = host ? host.x1 : this.W;
     const hy0 = host ? host.y0 + 1 : 10, hy1 = host ? host.y1 - 1 : this.H - 10;
-    if (this.segments) {                                   // keep lettering on one face of a corner
-      const cuts = [0, ...this.segments, this.W]; let best = [hx0, hx1], bestW = -1;
-      for (let i = 0; i < cuts.length - 1; i++) { const a = Math.max(hx0, cuts[i]), b = Math.min(hx1, cuts[i + 1]); if (b - a > bestW) { bestW = b - a; best = [a, b]; } }
-      [hx0, hx1] = best;
-    }
     const x0 = Math.round(hx0 + (hx1 - hx0 - g.w) * P.numberPosX);
     const y0 = Math.round(hy0 + (hy1 - hy0 - g.h) * P.numberPosY);
     const wear = vnoise(this.W, this.H, 2.5, this.R);
@@ -513,10 +507,13 @@ export class Skin {
     }
     const V = new Float32Array(W * H).fill(P.baseTone);
     const n1 = vnoise(W, H, 11, R), n2 = vnoise(W, H, 3, R), n4 = vnoise(W, H, 4, R);
+    // panel distinction: each slab gets its own shade and block, with calmer noise inside it
+    const pk = P.panelContrast || 0, calm = 1 - 0.6 * pk;
     for (let i = 0; i < W * H; i++) {
       const m = this.mono[i];
-      if (m >= 0) V[i] += this.monos[m].tone;
-      V[i] += P.largeNoise * (n1[i] - 0.5) + P.fineNoise * (n2[i] - 0.5) + P.speckle * (R.f() - 0.5);
+      if (m >= 0) V[i] += this.monos[m].tone + pk * 0.55 * (roll(this.seed, m, 71) - 0.5);
+      V[i] += calm * (P.largeNoise * (n1[i] - 0.5) + P.fineNoise * (n2[i] - 0.5) + P.speckle * (R.f() - 0.5));
+      if (m === -2) V[i] += 0.14 * pk;                                        // joints read as shadow lines
       if (this.formline[i]) V[i] += 0.05;
       V[i] += this.dark[i];
       if (F[i] < NONE) V[i] += 0.03 * Math.max(0, Math.min(12, F[i] - 5));
@@ -537,6 +534,10 @@ export class Skin {
     });
     this.V = V;
     this.pick = vnoise(W, H, P.patchSize, R).map(v => v * 2.7);
+    if (pk > 0) for (let i = 0; i < W * H; i++) {
+      const m = this.mono[i];
+      if (m >= 0) this.pick[i] = this.pick[i] * (1 - pk) + roll(this.seed, m, 72) * 2.7 * pk;
+    }
     this.striae = streakNoise(W, H, R);
   }
   faceBlock(x, y, face, wet = 0) {
@@ -692,26 +693,19 @@ export const LAYOUTS = {
     s.groove(sx0 - 1, hb, hb + sh, 5); s.groove(sx0 + sw, hb, hb + sh, 5);
     s.massing(sx0, sx0 + sw, hb + sh, Math.max(hb + sh, P.heightMin - 8));
   },
-  flat(s, front) {
-    for (let x = 0; x < s.W; x++) for (let y = 0; y < s.H; y++) if (front.getF(s.W - 1 - x, y) < NONE) s.F[s.i(x, y)] = 0;
-    s.monos.push({ x0: 0, x1: s.W, y0: 0, y1: s.H, f: 0, tone: 0, ties: false });
-    for (let k = 0; k < s.F.length; k++) if (s.F[k] < NONE) s.mono[k] = 0;
-  },
 };
 export const LAYOUT_NAMES = { stacked: 'Stacked tiers', towers: 'Twin towers', cantilever: 'Cantilever / overhang', beam: 'Beam & passage', slab: 'Sector slab' };
 
-function buildSkin(W, H, seed, P, layout, feat, frontForFlat, segments) {
+function buildSkin(W, H, seed, P, layout, feat) {
   const s = new Skin(W, H, seed, P);
-  if (segments) s.segments = segments;
-  if (layout === 'flat') LAYOUTS.flat(s, frontForFlat);
-  else { LAYOUTS[layout](s); s.plinth(); s.features(feat); }
+  LAYOUTS[layout](s); s.plinth(); s.features(feat);
   s.weather();
   return s;
 }
 
 // ------------------------------------------------------------------ whole structure
 export function generate(P) {
-  const g = P.piece === 'corner' ? generateCorner(P) : generateStraight(P);
+  const g = buildFootprint(P, pieceMask(P));
   if (P.ivy) applyIvy(g, P);
   return g;
 }
@@ -720,25 +714,190 @@ function featBundle(P, side, k = 1) {
   const lettering = side === 'front' ? (P.numberSide !== 'back' ? P.numberText : '') : (P.numberSide !== 'front' ? P.numberText : '');
   return { doorways: q(P.doorways), hazards: q(P.hazards), portholes: q(P.portholes), grilles: q(P.grilles), windows: q(P.windows), channels: q(P.channels), lettering };
 }
-function backLayoutFor(P, W) {
-  const br = new Rng(P.seed * 7919 + P.backSeedOffset + [...P.layout].reduce((h, c) => h * 31 + c.charCodeAt(0), 7));
-  const pool = ['stacked', 'towers', 'cantilever', ...(W >= 30 ? ['beam'] : [])];
-  return P.backLayout === 'auto' ? br.pick(pool) : P.backLayout === 'same' ? P.layout : P.backLayout;
-}
 const backK = P => P.backFeatures === 'none' ? 0 : P.backFeatures === 'fewer' ? 0.5 : 1;
 
-function generateStraight(P) {
-  const W = P.width, H = P.heightMax + 2, D = P.thickness;
-  const feat = featBundle(P, 'front');
-  const front = buildSkin(W, H, P.seed, P, P.layout, feat);
-  let back;
-  if (!P.doubleSided) back = buildSkin(W, H, P.seed + 1, P, 'flat', {}, front);
-  else {
-    const bl = backLayoutFor(P, W);
-    back = buildSkin(W, H, P.seed + P.backSeedOffset, P, bl, featBundle(P, 'back', backK(P)));
-    back.layoutName = bl;
+// ------------------------------------------------------------------ floor plans
+// Every piece is a 2D footprint of wall columns (1 = wall). Front faces south (+z), like the schematics.
+export const PIECES = { straight: 'Straight wall', corner: 'Corner (L-shape)', tee: 'T-junction', cross: 'Crossroads', maze: 'Whole maze' };
+function pieceMask(P) {
+  if (P.piece === 'maze') return mazeMask(P);
+  const T = P.thickness, L = Math.max(P.width, T + 6);
+  const rect = (W, D, f) => { const m = new Uint8Array(W * D); for (let x = 0; x < W; x++) for (let z = 0; z < D; z++) m[x * D + z] = f(x, z) ? 1 : 0; return { W, D, mask: m }; };
+  const mid = v => v >= (L - T) >> 1 && v < ((L - T) >> 1) + T;
+  switch (P.piece) {
+    case 'corner': return rect(L, L, (x, z) => z >= L - T || x >= L - T);            // outer faces south + east
+    case 'tee': return rect(L, L, (x, z) => z >= L - T || mid(x));                    // bar along the south, stem north
+    case 'cross': return rect(L, L, (x, z) => mid(x) || mid(z));
+    default: return rect(P.width, T, () => true);
   }
-  return combine(front, back, W, H, D, P);
+}
+// a seeded maze: cells joined by carving passages (recursive backtracker), optional loops and a Glade
+function mazeMask(P) {
+  const R = new Rng(P.seed * 3 + 1), C = P.mazeCols, Rw = P.mazeRows, cor = P.mazeCorridor, t = P.mazeWall, cell = cor + t;
+  const W = C * cell + t, D = Rw * cell + t, m = new Uint8Array(W * D);
+  for (let x = 0; x < W; x++) for (let z = 0; z < D; z++) m[x * D + z] = x % cell < t || z % cell < t ? 1 : 0;
+  const open = (x0, x1, z0, z1) => { for (let x = x0; x < x1; x++) for (let z = z0; z < z1; z++) m[x * D + z] = 0; };
+  const between = (i, j, di, dj) => di ? open((i + (di > 0 ? 1 : 0)) * cell, (i + (di > 0 ? 1 : 0)) * cell + t, j * cell + t, (j + 1) * cell)
+                                      : open(i * cell + t, (i + 1) * cell, (j + (dj > 0 ? 1 : 0)) * cell, (j + (dj > 0 ? 1 : 0)) * cell + t);
+  const gs = P.glade ? Math.min(P.gladeSize, C - 2, Rw - 2) : 0, gi = (C - gs) >> 1, gj = (Rw - gs) >> 1;
+  const inGlade = (i, j) => gs > 0 && i >= gi && i < gi + gs && j >= gj && j < gj + gs;
+  const seen = new Uint8Array(C * Rw), N = [[1, 0], [-1, 0], [0, 1], [0, -1]], links = new Uint8Array(C * Rw);
+  let start = [0, 0]; if (inGlade(0, 0)) start = [C - 1, Rw - 1];
+  const stack = [start]; seen[start[0] * Rw + start[1]] = 1;
+  while (stack.length) {
+    const [i, j] = stack[stack.length - 1];
+    const nb = N.map(([di, dj]) => [i + di, j + dj, di, dj]).filter(([a, b]) => a >= 0 && b >= 0 && a < C && b < Rw && !seen[a * Rw + b] && !inGlade(a, b));
+    if (!nb.length) { stack.pop(); continue; }
+    const [a, b, di, dj] = nb[Math.floor(R.f() * nb.length)];
+    between(i, j, di, dj); links[i * Rw + j]++; links[a * Rw + b]++; seen[a * Rw + b] = 1; stack.push([a, b]);
+  }
+  for (let i = 0; i < C; i++) for (let j = 0; j < Rw; j++) {                  // braid: knock through some dead ends
+    if (links[i * Rw + j] !== 1 || inGlade(i, j) || R.f() >= P.mazeBraid) continue;
+    const nb = N.filter(([di, dj]) => i + di >= 0 && j + dj >= 0 && i + di < C && j + dj < Rw && !inGlade(i + di, j + dj));
+    const [di, dj] = nb[Math.floor(R.f() * nb.length)]; between(i, j, di, dj); links[i * Rw + j]++;
+  }
+  if (gs) {                                                                     // the Glade: an open square with a gate in each side
+    open(gi * cell + t, (gi + gs) * cell, gj * cell + t, (gj + gs) * cell);
+    const mi = gi + (gs >> 1), mj = gj + (gs >> 1);
+    between(mi, gj, 0, -1); between(mi, gj + gs - 1, 0, 1); between(gi, mj, -1, 0); between(gi + gs - 1, mj, 1, 0);
+  }
+  return { W, D, mask: m };
+}
+
+// ------------------------------------------------------------------ footprint builder
+// The outline of the footprint is traced into loops of faces (walking with the viewer outside, so text reads
+// left to right). Every straight run of the outline gets its own designed skin; short runs (wall ends) get an
+// end skin whose joints follow their neighbour. Relief is carved inwards from each face, never cutting through
+// the solid core, tops follow the nearest face, and the shared paint pass does rain, dirt and materials.
+const N4 = [[0, 1], [1, 0], [0, -1], [-1, 0]];                                  // outward normals: s, e, n, w
+const dirOf = (dx, dz) => N4.findIndex(([a, b]) => a === dx && b === dz);
+function traceRuns(mask, W, D) {
+  const inM = (x, z) => x >= 0 && z >= 0 && x < W && z < D && mask[x * D + z] === 1;
+  const seen = new Uint8Array(W * D * 4), runs = [];
+  let loopId = 0;
+  for (let x = 0; x < W; x++) for (let z = 0; z < D; z++) for (let d0 = 0; d0 < 4; d0++) {
+    if (!inM(x, z) || inM(x + N4[d0][0], z + N4[d0][1]) || seen[(x * D + z) * 4 + d0]) continue;
+    const loop = [];
+    let cx = x, cz = z, d = d0;
+    do {
+      seen[(cx * D + cz) * 4 + d] = 1; loop.push([cx, cz, d]);
+      const [nx, nz] = N4[d], tx = nz, tz = -nx;                                // walking direction = viewer's right
+      if (inM(cx + nx + tx, cz + nz + tz)) { cx += nx + tx; cz += nz + tz; d = dirOf(-tx, -tz); }   // inner corner
+      else if (inM(cx + tx, cz + tz)) { cx += tx; cz += tz; }                                         // straight on
+      else d = dirOf(tx, tz);                                                                         // outer corner
+    } while (!(cx === x && cz === z && d === d0));
+    let s0 = loop.findIndex((e, i) => e[2] !== loop[(i + loop.length - 1) % loop.length][2]);
+    if (s0 < 0) s0 = 0;
+    const ordered = loop.slice(s0).concat(loop.slice(0, s0));
+    for (const e of ordered) {
+      const last = runs[runs.length - 1];
+      if (last && last.loop === loopId && last.d === e[2]) last.cells.push(e); else runs.push({ loop: loopId, d: e[2], cells: [e] });
+    }
+    loopId++;
+  }
+  return runs;
+}
+function buildFootprint(P, { W, D, mask }) {
+  const H = P.heightMax + 2, T = P.piece === 'maze' ? P.mazeWall : P.thickness, core = Math.max(2, P.minCore);
+  const runs = traceRuns(mask, W, D);
+  // --- a skin per face
+  // a wall end: a short run capped between two faces that point in opposite directions (the tip of a wall)
+  // When a face and its neighbour both look like ends (a wall about as wide as it is thick), the one closer
+  // to the wall thickness is the end; on a tie the x-facing sides are, since straight walls run along x.
+  const nb = i => [runs[(i + runs.length - 1) % runs.length], runs[(i + 1) % runs.length]];
+  runs.forEach((r, i) => {
+    const [prev, next] = nb(i);
+    r.cand = r.cells.length <= T + 2 && prev.loop === r.loop && next.loop === r.loop && (prev.d + 2) % 4 === next.d;
+    r.endScore = Math.abs(r.cells.length - T) + (r.d % 2 ? 0 : 0.5);
+  });
+  runs.forEach((r, i) => { r.isEnd = r.cand && nb(i).every(q => !q.cand || r.endScore <= q.endScore); });
+  const isEnd = r => r.isEnd;
+  let primary = -1;
+  runs.forEach((r, i) => { if (r.d === 0 && !isEnd(r) && (primary < 0 || r.cells.length > runs[primary].cells.length)) primary = i; });
+  if (primary < 0) primary = runs.reduce((b, r, i) => r.cells.length > runs[b].cells.length ? i : b, 0);
+  const pool = ['stacked', 'towers', 'cantilever'];
+  runs.forEach((r, i) => {
+    if (isEnd(r)) return;
+    const len = r.cells.length;
+    if (i === primary) { r.skin = buildSkin(len, H, P.seed, P, P.layout, featBundle(P, 'front')); return; }
+    const br = new Rng(P.seed * 7919 + P.backSeedOffset + i * 104729);
+    const layout = !P.doubleSided ? 'stacked' : P.backLayout === 'auto' ? br.pick(len >= 30 ? [...pool, 'beam'] : pool) : P.backLayout === 'same' ? P.layout : P.backLayout;
+    const opposite = r.d === 2 && P.piece !== 'maze' && i === runs.findIndex(q => q.d === 2 && !isEnd(q));
+    const bp = P.doubleSided ? P : { ...P, reliefMax: 0, splitChance: 0.2, ledgeChance: 0 };
+    const feat = featBundle(P, 'back', P.doubleSided ? backK(P) * (opposite ? 1 : 0.6) : 0);
+    if (!opposite) feat.lettering = '';
+    r.skin = buildSkin(len, H, P.seed + P.backSeedOffset + i * 7919, bp, layout, feat);
+    r.layout = layout;
+  });
+  runs.forEach((r, i) => {                                                      // wall ends follow a neighbour's tiers
+    if (!isEnd(r)) return;
+    const prev = runs[(i + runs.length - 1) % runs.length], next = runs[(i + 1) % runs.length];
+    const nb = prev.skin ? [prev.skin, prev.cells.length - 1] : next.skin ? [next.skin, 0] : null;
+    r.skin = nb ? endSkin(nb[0], nb[1], H, r.cells.length, P, i) : buildSkin(r.cells.length, H, P.seed + i, P, 'stacked', featBundle(P, 'back', 0));
+    r.end = true;
+  });
+  // --- every mask column belongs to its nearest face: `owner` picks the material (ends included),
+  // `shaper` decides the height (faces only, so a wall end never pokes up above the wall)
+  const nearest = pick => {
+    const own = new Int32Array(W * D).fill(-1), u = new Int32Array(W * D), q = [];
+    runs.forEach((r, ri) => { if (pick(r)) r.cells.forEach(([x, z], i) => { const k = x * D + z; if (own[k] < 0) { own[k] = ri; u[k] = i; q.push(k); } }); });
+    for (let h = 0; h < q.length; h++) {
+      const k = q[h], x = Math.floor(k / D), z = k % D;
+      for (const [dx, dz] of N4) {
+        const nx = x + dx, nz = z + dz, nk = nx * D + nz;
+        if (nx < 0 || nz < 0 || nx >= W || nz >= D || !mask[nk] || own[nk] >= 0) continue;
+        own[nk] = own[k]; u[nk] = u[k]; q.push(nk);
+      }
+    }
+    return [own, u];
+  };
+  const [owner, ownU] = nearest(() => true), [shaper, shapeU] = runs.some(r => !r.isEnd) ? nearest(r => !r.isEnd) : [owner, ownU];
+  const skinF = (ri, u, y) => runs[ri].skin.F[u * H + y];
+  // --- solid where the shaping face has wall at this height...
+  const occ = new Uint8Array(W * H * D), at = (x, y, z) => (y * D + z) * W + x;
+  for (let x = 0; x < W; x++) for (let z = 0; z < D; z++) {
+    const k = x * D + z; if (!mask[k]) continue;
+    for (let y = 0; y < H; y++) if (skinF(shaper[k], shapeU[k], y) < NONE) occ[at(x, y, z)] = 1;
+  }
+  // --- ...then relief is carved in from every face (the primary first), keeping `core` solid blocks behind
+  const endRelief = P.endDetail ? Math.max(0, P.endRelief ?? 2) : 0;
+  const order = runs.map((_, i) => i).sort((a, b) => (a !== primary) - (b !== primary) || (runs[a].end ? 1 : 0) - (runs[b].end ? 1 : 0));
+  for (const ri of order) {
+    const r = runs[ri], [nx, nz] = N4[r.d];
+    r.cells.forEach(([x, z], u) => {
+      for (let y = 0; y < H; y++) {
+        let f = skinF(ri, u, y); if (f >= NONE) continue;
+        if (r.end) f = Math.min(f, endRelief);
+        for (let k = 0; k < f; k++) {
+          const cx = x - nx * k, cz = z - nz * k;
+          if (cx < 0 || cz < 0 || cx >= W || cz >= D || !mask[cx * D + cz]) break;
+          let behind = 0;
+          for (let j = 1; j <= core; j++) { const bx = cx - nx * j, bz = cz - nz * j; if (bx >= 0 && bz >= 0 && bx < W && bz < D && occ[at(bx, y, bz)]) behind++; else break; }
+          if (behind < core) break;
+          occ[at(cx, y, cz)] = 0;
+        }
+      }
+    });
+  }
+  // --- materials: each exposed block takes its owning face's skin
+  const { data, keys, id: kid, dirt } = paint(W, H, D, occ, P, (x, y, z, o, wet) => {
+    const k = x * D + z, r = runs[owner[k]], out = 'senw'[r.d];
+    return r.skin.faceBlock(ownU[k], y, o[out], wet);
+  });
+  // --- iron bars / louvres from each face's skin, placed in front of their recess
+  runs.forEach(r => {
+    if (r.end) return;
+    const [nx, nz] = N4[r.d], alongX = nz !== 0;
+    fixtures(r.skin, (u, y, dep, v) => {
+      if (u < 0 || u >= r.cells.length) return;
+      const [x, z] = r.cells[u], cx = x - nx * dep, cz = z - nz * dep;
+      if (cx < 0 || cz < 0 || cx >= W || cz >= D || y < 0 || y >= H || data[at(cx, y, cz)]) return;
+      data[at(cx, y, cz)] = kid(P.palette.bars + '|' + (v === 'h' && !alongX ? 'z' : v));
+    });
+  });
+  const top = trimTop(W, H, D, data);
+  const faces = runs.filter(r => !r.end).length, back = runs.find((r, i) => i !== primary && r.layout)?.layout;
+  return { W, H: top, D, data: data.subarray(0, top * D * W), dirt: dirt.subarray(0, top * D * W), keys, backLayout: back, faces };
 }
 
 function endSkin(tierSkin, col, H, D, P, side) {
@@ -766,42 +925,6 @@ function endSkin(tierSkin, col, H, D, P, side) {
   return s;
 }
 
-function combine(front, back, W, H, D, P) {
-  const mid = D >> 1, core = Math.max(2, P.minCore);
-  const has = new Uint8Array(W * H), zf = new Int16Array(W * H), zb = new Int16Array(W * H);
-  for (let x = 0; x < W; x++) for (let y = 0; y < H; y++) {
-    const i = x * H + y, ff = front.F[i], fb = back.F[(W - 1 - x) * H + y];
-    has[i] = (ff < NONE || fb < NONE) ? 1 : 0;
-    let a = ff < NONE ? D - 1 - ff : mid, b = fb < NONE ? fb : mid;
-    b = Math.max(0, Math.min(b, a - (core - 1)));
-    zf[i] = Math.max(a, b); zb[i] = b;
-  }
-  // each end face gets its own designed skin (width = thickness), with joints aligned to the front's tiers
-  const ends = [endSkin(front, 0, H, D, P, 0), endSkin(front, W - 1, H, D, P, 1)];
-  const relief = P.endDetail ? Math.max(0, P.endRelief ?? 2) : 0;
-  const occ = new Uint8Array(W * H * D);                         // schematic order: x fastest, then z, then y
-  for (let x = 0; x < W; x++) for (let y = 0; y < H; y++) {
-    const i = x * H + y; if (!has[i]) continue;
-    for (let z = zb[i]; z <= zf[i]; z++)
-      if (x >= endDepth(ends[0], z, y, relief) && x <= W - 1 - endDepth(ends[1], D - 1 - z, y, relief)) occ[(y * D + z) * W + x] = 1;
-  }
-  const { data, keys, id: kid, dirt, at } = paint(W, H, D, occ, P, (x, y, z, o, wet) => {
-    if (!o.n && !o.s && (o.w || o.e)) {                              // end face
-      const side = o.w && (!o.e || x < W / 2) ? 0 : 1;
-      return ends[side].faceBlock(side ? D - 1 - z : z, y, true, wet);
-    }
-    const i = x * H + y;
-    return z >= mid ? front.faceBlock(x, y, z === zf[i], wet) : back.faceBlock(W - 1 - x, y, z === zb[i], wet);
-  });
-  const pal = P.palette;
-  for (const [side, sgn] of [[front, 1], [back, -1]]) fixtures(side, (x, y, depth, v) => {
-    const gx = sgn > 0 ? x : W - 1 - x, gz = sgn > 0 ? D - 1 - depth : depth;
-    if (gx >= 0 && gx < W && y >= 0 && y < H && gz >= 0 && gz < D && data[at(gx, y, gz)] === 0) data[at(gx, y, gz)] = kid(pal.bars + '|' + v);
-  });
-  const top = trimTop(W, H, D, data);
-  return { W, H: top, D, data: data.subarray(0, top * D * W), dirt: dirt.subarray(0, top * D * W), keys, backLayout: back.layoutName };
-}
-
 // ------------------------------------------------------------------ rain & dirt
 // Rain lands on every top open to the sky, flows across each top towards its edges (gathering at low
 // points, so it leaves at a few drip points) and runs down the face below: wandering, widening, landing
@@ -819,8 +942,13 @@ function simulateWater(W, H, D, solid, P, R) {
     for (let yy = y; yy >= 0 && amt > 0.02; yy--) {
       if (yy < y) {
         if (solid(wx + dx, yy, wz + dz)) { through[at(wx + dx, yy, wz + dz)] += amt * 0.85; return; }   // lands on a ledge below
-        if (!solid(wx, yy, wz)) {                                                                         // wall steps back: free fall
-          for (let y2 = yy - 1; y2 >= 0; y2--) if (solid(wx, y2, wz)) { through[at(wx, y2, wz)] += amt * 0.75; break; }
+        if (!solid(wx, yy, wz)) {                                                                         // the wall steps back
+          // some water clings to the soffit and creeps back to the recessed wall, staining it just below the ledge
+          let k = 1; while (k <= 6 && !solid(wx - dx * k, yy, wz - dz * k) && solid(wx - dx * k, yy + 1, wz - dz * k)) k++;
+          const creep = k <= 6 && solid(wx - dx * k, yy, wz - dz * k) ? amt * P.soffitCreep : 0;
+          for (let j = 0; j < k && creep; j++) flow[at(wx - dx * j, yy + 1, wz - dz * j)] += creep * 0.5;
+          if (creep) runDown(wx - dx * k, yy, wz - dz * k, dx, dz, creep);
+          for (let y2 = yy - 1; y2 >= 0 && amt > creep; y2--) if (solid(wx, y2, wz)) { through[at(wx, y2, wz)] += (amt - creep) * 0.75; break; }
           return;
         }
       }
@@ -860,6 +988,19 @@ function simulateWater(W, H, D, solid, P, R) {
       for (const [dx, dz] of open) runDown(x, y, z, dx, dz, w / open.length);
     }
   }
+  if (P.windRain > 0) {
+    const a = P.windDir * Math.PI / 180, sx = Math.sin(a), sz = -Math.cos(a);          // towards where the wind comes from
+    for (let y = 1; y < H; y++) for (let z = 0; z < D; z++) for (let x = 0; x < W; x++) {
+      if (!solid(x, y, z)) continue;
+      for (const [dx, dz] of DIRS4) {
+        const facing = dx * sx + dz * sz;
+        if (facing <= 0.2 || solid(x + dx, y, z + dz)) continue;
+        let open = true;                                                               // rain comes in at ~45° down
+        for (let k = 1; k <= 12 && open; k++) if (solid(Math.round(x + dx + sx * k), y + k, Math.round(z + dz + sz * k))) open = false;
+        if (open) flow[at(x, y, z)] += P.windRain * facing * 1.4;
+      }
+    }
+  }
   return { flow, through };
 }
 
@@ -878,7 +1019,12 @@ function paint(W, H, D, occ, P, faceFn) {
     let b;
     if (!side && !o.u && !o.d) b = P.palette.interior;
     else if (o.u && !side) { dirt[i] = Math.min(0.5, k * 0.12 * Math.log1p(Math.max(0, water.through[i] - 1) / 3)); b = roof.block(x, y, z, edgeDist(solid, x, y, z), dirt[i]); }
-    else { dirt[i] = Math.min(0.5, k * 0.22 * Math.log1p(water.flow[i] / 1.5)); b = faceFn(x, y, z, o, dirt[i]); }
+    else {
+      const f = water.flow[i], washed = 1 - P.washing * f / (f + 25);             // heavy flow washes the centre clean
+      const sun = o.s ? 1 - 0.35 * P.sunDrying : o.n ? 1 + 0.3 * P.sunDrying : 1;  // south faces dry out, north stay damp
+      dirt[i] = Math.min(0.5, k * 0.22 * Math.log1p(f / 1.5) * washed * sun);
+      b = faceFn(x, y, z, o, dirt[i]);
+    }
     data[i] = id(b);
   }
   return { data, keys, id, dirt, at };
@@ -931,60 +1077,6 @@ export function composeGrids(pieces) {
     }
   }
   return { W, H, D, data, keys };
-}
-
-// ------------------------------------------------------------------ corner (L-shaped) piece
-// Built with the outer corner at the origin (outer faces north + west), then turned 180° so that,
-// like the straight walls, the outer face points south and continues round onto the east face.
-function generateCorner(P) {
-  const D = P.thickness, L = Math.max(P.width, D + 6), H = P.heightMax + 2, n = L - D, mid = D >> 1;
-  const core = Math.max(2, P.minCore);
-  const outer = buildSkin(2 * L, H, P.seed, P, P.layout, featBundle(P, 'front'), null, [L]);
-  const innerLayout = P.doubleSided ? backLayoutFor(P, 2 * n) : 'stacked';
-  const IP = P.doubleSided ? P : { ...P, reliefMax: 0, splitChance: 0.2, ledgeChance: 0 };
-  const inner = buildSkin(2 * n, H, P.seed + P.backSeedOffset, IP, innerLayout, P.doubleSided ? featBundle(P, 'back', backK(P) * 0.6) : featBundle(P, 'back', 0), null, [n]);
-  const endA = endSkin(outer, 0, H, D, P, 0), endB = endSkin(outer, 2 * L - 1, H, D, P, 1);
-  const relief = P.endDetail ? Math.max(0, P.endRelief ?? 2) : 0;
-  const clampF = v => v >= NONE ? null : Math.min(v, D - core - 1);
-  const oF = (u, y) => clampF(outer.F[u * H + y]);
-  const iF = (u, y) => clampF(inner.F[u * H + y]);
-  const occ = new Uint8Array(L * H * L), at = (x, y, z) => (y * L + z) * L + x;
-  for (let y = 0; y < H; y++) for (let z = 0; z < L; z++) for (let x = 0; x < L; x++) {
-    const armA = z < D, armB = x < D;
-    if (!armA && !armB) continue;
-    const on = armA ? oF(L - 1 - x, y) : null, ow = armB ? oF(L + z, y) : null;   // outer depth (north / west)
-    if (on === null && ow === null) continue;
-    let ok = true;
-    if (armA) ok &&= on === null ? z >= mid : z >= on;
-    if (armB) ok &&= ow === null ? x >= mid : x >= ow;
-    if (armA && !armB) {                          // arm A, inner face looks south
-      const i = iF(n + x - D, y), lim = i === null ? D - 1 - mid : D - 1 - Math.min(i, D - core - (on ?? mid));
-      ok &&= z <= lim && x <= L - 1 - endDepth(endA, D - 1 - z, y, relief);
-    }
-    if (armB && !armA) {                          // arm B, inner face looks east
-      const i = iF(L - 1 - z, y), lim = i === null ? D - 1 - mid : D - 1 - Math.min(i, D - core - (ow ?? mid));
-      ok &&= x <= lim && z <= L - 1 - endDepth(endB, x, y, relief);
-    }
-    if (ok) occ[at(x, y, z)] = 1;
-  }
-  const { data, keys, id: kid, dirt } = paint(L, H, L, occ, P, (x, y, z, o, wet) => {
-    if (o.n && z < D) return outer.faceBlock(L - 1 - x, y, true, wet);
-    if (o.w && x < D) return outer.faceBlock(L + z, y, true, wet);
-    if (o.s && z < D && x >= D) return inner.faceBlock(n + x - D, y, true, wet);
-    if (o.e && x < D && z >= D) return inner.faceBlock(L - 1 - z, y, true, wet);
-    if (o.e && z < D) return endA.faceBlock(D - 1 - z, y, true, wet);
-    if (o.s && x < D) return endB.faceBlock(x, y, true, wet);
-    return z < D ? outer.faceBlock(L - 1 - x, y, false, wet) : outer.faceBlock(L + z, y, false, wet);
-  });
-  const pal = P.palette;
-  // iron bars, mapped from skin space onto the two faces of each skin (louvres turn with the face)
-  const place = (x, y, z, v) => { if (x >= 0 && y >= 0 && z >= 0 && x < L && y < H && z < L && !data[at(x, y, z)]) data[at(x, y, z)] = kid(pal.bars + '|' + v); };
-  const turn = (v, alongX) => v === 'h' && !alongX ? 'z' : v;
-  fixtures(outer, (u, y, d, v) => u < L ? place(L - 1 - u, y, d, turn(v, true)) : place(d, y, u - L, turn(v, false)));
-  fixtures(inner, (u, y, d, v) => u < n ? place(D - 1 - d, y, L - 1 - u, turn(v, false)) : place(D + (u - n), y, D - 1 - d, turn(v, true)));
-  const top = trimTop(L, H, L, data);
-  const g = { W: L, H: top, D: L, data: data.subarray(0, top * L * L), dirt: dirt.subarray(0, top * L * L), keys, backLayout: innerLayout };
-  return rotateGrid(g, 2);
 }
 
 // ------------------------------------------------------------------ ivy & vines
@@ -1165,11 +1257,11 @@ export const DEFAULTS = {
   portholes: 0, portholeRadius: 2, grilles: 0, grilleMin: 3, grilleMax: 5, hazards: 0, hazardStripe: 2, hazardWear: 0.12,
   channels: 0, channelPairs: true, doorways: 0, doorWidth: 3, doorHeight: 5, doorDepth: 8, windows: 0,
   tieChance: 0.4, tieSpacing: 5,
-  baseTone: 0.20, panelTone: 0.05, largeNoise: 0.16, fineNoise: 0.07, speckle: 0.05, patchSize: 2.2,
-  streakStrength: 1.05, streakLength: 32, streakCoverage: 0.35, grimeHeight: 10, grimeStrength: 0.30, moss: 1.0,
+  baseTone: 0.20, panelTone: 0.05, panelContrast: 0, largeNoise: 0.16, fineNoise: 0.07, speckle: 0.05, patchSize: 2.2,
+  streakStrength: 1.05, streakLength: 32, streakCoverage: 0.35, windDir: 225, windRain: 0.35, soffitCreep: 0.6, sunDrying: 0.5, washing: 0.35, grimeHeight: 10, grimeStrength: 0.30, moss: 1.0,
   cracks: 2, crackRust: 0.4, rust: 1.0, chips: 0.5, pockmarks: 0.003,
   palette: DEFAULT_PALETTE,
-  piece: 'straight', cornerPreview: true,
+  piece: 'straight', cornerPreview: true, mazeCols: 5, mazeRows: 5, mazeCorridor: 9, mazeWall: 8, mazeBraid: 0.15, glade: true, gladeSize: 1,
   ivy: true, ivyAmount: 0.35, ivyLength: 22, ivyWidth: 4, ivyClimb: 0.35, ivyClimbHeight: 14, ivyLeaves: 0.55, ivyMoss: 0.35, ivyCluster: 7, ivyVariation: 1, ivyLeafBlock: 'azalea_leaves', ivyBranching: 0.07, ivyWander: 0.45, ivyShade: 0.7,
   autoPalette: true, autoRoles: true, autoContrast: 1.0, autoSpread: 0.08, autoSatMax: 0.12, roleLock: {},
   autoBlocks: ['smooth_stone', 'andesite', 'polished_andesite', 'stone', 'stone_bricks', 'cracked_stone_bricks', 'tuff',
@@ -1187,5 +1279,9 @@ export const PRESETS = {
   'Corner piece': { piece: 'corner', layout: 'stacked', width: 30, fins: true },
   'Overgrown corner': { piece: 'corner', layout: 'stacked', width: 30, fins: true, ivyAmount: 1, ivyClimb: 0.95, ivyLeaves: 0.9, ivyMoss: 0.7, ivyLength: 46, ivyClimbHeight: 30, ivyWidth: 7, ivyBranching: 0.1, moss: 1.8 },
   'Overgrown wall': { layout: 'stacked', fins: true, ivyAmount: 1, ivyClimb: 0.95, ivyLeaves: 0.9, ivyMoss: 0.7, ivyLength: 46, ivyClimbHeight: 30, ivyWidth: 7, ivyBranching: 0.1, moss: 1.8, streakStrength: 1.3 },
+  'T-junction': { piece: 'tee', layout: 'stacked', width: 44, fins: true },
+  'Crossroads': { piece: 'cross', layout: 'stacked', width: 56, fins: true },
+  'Maze with Glade': { piece: 'maze', layout: 'stacked', mazeCols: 5, mazeRows: 5, mazeCorridor: 9, mazeWall: 8, glade: true, fins: false, ivyAmount: 0.45 },
+  'Big maze (9×9)': { piece: 'maze', layout: 'stacked', mazeCols: 9, mazeRows: 9, mazeCorridor: 8, mazeWall: 6, glade: true, gladeSize: 3, fins: false, heightMin: 40, heightMax: 48, ivyAmount: 0.4 },
   'Ruined low wall': { layout: 'stacked', heightMin: 30, heightMax: 42, cracks: 7, chips: 0.9, pockmarks: 0.02, moss: 2, streakStrength: 1.4, fins: false },
 };

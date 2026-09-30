@@ -1,4 +1,5 @@
-import { generate, DEFAULTS, PRESETS, LAYOUT_NAMES, Rng, rotateGrid, composeGrids } from './gen.js';
+import { generate, DEFAULTS, PRESETS, LAYOUT_NAMES, PIECES, Rng } from './gen.js';
+import { buildScene } from './worker.js';
 import { writeSchem, readSchem } from './schem.js';
 import { Viewer } from './viewer.js';
 import { effectivePalette } from './palette.js';
@@ -22,14 +23,24 @@ const viewer = new Viewer($('#view'), library);
 const FONTS = ['Maze Block', 'Impact', 'Arial Black', 'Verdana', 'Georgia', 'Trebuchet MS', 'Courier New', 'DejaVu Sans', 'Liberation Sans', 'monospace', 'serif'];
 const SCHEMA = [
   { id: 'structure', title: 'Structure', ico: '▣', items: [
-    { k: 'piece', type: 'select', label: 'Piece', options: { straight: 'Straight wall', corner: 'Corner (L-shape)' }, help: 'Corner pieces join two walls at a right angle; the outer faces wrap round continuously.' },
+    { k: 'piece', type: 'select', label: 'Piece', options: PIECES, help: 'Single wall pieces, junctions, or a whole generated maze.' },
     { k: 'cornerPreview', type: 'toggle', label: 'Show attached walls', when: P => P.piece === 'corner', help: 'Preview the corner with a straight wall on each arm (only the corner is exported).' },
     { k: 'layout', type: 'select', label: 'Layout', options: LAYOUT_NAMES, help: 'The overall massing of the wall.' },
     { k: 'seed', type: 'seed', label: 'Seed', help: 'Same seed + same settings = same wall, every time.' },
-    { k: 'width', type: 'range', label: 'Width / arm length', min: 8, max: 96, step: 1, unit: 'blocks', help: 'For corners: length of each arm, measured on the outside.' },
+    { k: 'width', type: 'range', label: 'Width / arm length', min: 8, max: 96, step: 1, unit: 'blocks', when: P => P.piece !== 'maze', help: 'For corners and junctions: overall size, measured on the outside.' },
     { k: 'heightMin', type: 'range', label: 'Min height', min: 16, max: 200, step: 1, unit: 'blocks' },
     { k: 'heightMax', type: 'range', label: 'Max height', min: 16, max: 200, step: 1, unit: 'blocks', help: 'The skyline varies between min and max.' },
-    { k: 'thickness', type: 'range', label: 'Thickness', min: 6, max: 48, step: 1, unit: 'blocks' },
+    { k: 'thickness', type: 'range', label: 'Thickness', min: 6, max: 48, step: 1, unit: 'blocks', when: P => P.piece !== 'maze' },
+  ]},
+  { id: 'maze', title: 'Maze', ico: '⌗', items: [
+    { k: '_mazeNote', type: 'note', label: 'Set Piece to “Whole maze” to generate a complete maze.', when: P => P.piece !== 'maze' },
+    { k: 'mazeCols', type: 'range', label: 'Cells across', min: 2, max: 16, step: 1, when: P => P.piece === 'maze' },
+    { k: 'mazeRows', type: 'range', label: 'Cells deep', min: 2, max: 16, step: 1, when: P => P.piece === 'maze' },
+    { k: 'mazeCorridor', type: 'range', label: 'Corridor width', min: 3, max: 30, step: 1, unit: 'blocks', when: P => P.piece === 'maze' },
+    { k: 'mazeWall', type: 'range', label: 'Wall thickness', min: 4, max: 30, step: 1, unit: 'blocks', when: P => P.piece === 'maze' },
+    { k: 'mazeBraid', type: 'range', label: 'Loops', min: 0, max: 1, step: 0.01, when: P => P.piece === 'maze', help: 'Share of dead ends opened up into loops (0 = a perfect maze with one route).' },
+    { k: 'glade', type: 'toggle', label: 'Glade', when: P => P.piece === 'maze', help: 'An open square in the middle with a gate in each side.' },
+    { k: 'gladeSize', type: 'range', label: 'Glade size', min: 1, max: 6, step: 1, unit: 'cells', when: P => P.piece === 'maze' && P.glade },
   ]},
   { id: 'back', title: 'Back & ends', ico: '◧', items: [
     { k: 'doubleSided', type: 'toggle', label: 'Detailed back', help: 'Give the back its own design (otherwise flat but weathered).' },
@@ -49,6 +60,7 @@ const SCHEMA = [
     { k: 'slabTarget', type: 'range', label: 'Typical slab width', min: 5, max: 40, step: 1, unit: 'blocks', help: 'Wide walls split into more slabs so they never become big flat panels.' },
     { k: 'bayWidth', type: 'range', label: 'Bay width', min: 8, max: 60, step: 1, unit: 'blocks', help: 'Wide walls are built as independent bays, each with its own depth, joints and skyline.' },
     { k: 'bayRelief', type: 'range', label: 'Bay relief', min: 0, max: 8, step: 1, unit: 'blocks', help: 'How far whole bays step forward or back from each other.' },
+    { k: 'panelContrast', type: 'range', label: 'Panel distinction', min: 0, max: 1, step: 0.01, help: 'Makes every slab stand out: its own shade and block, calmer texture inside, deeper and darker joints between slabs.' },
     { k: 'panelDetail', type: 'range', label: 'Panel detail', min: 0, max: 1, step: 0.01, help: 'Share of big slabs given inset panels, pilaster strips or a formwork grid.' },
     { k: 'ledgeChance', type: 'range', label: 'Ledge caps', min: 0, max: 1, step: 0.01, help: 'Projecting band on top of slabs.' },
     { k: 'jointDepth', type: 'range', label: 'Joint depth', min: 0, max: 3, step: 1 },
@@ -120,6 +132,11 @@ const SCHEMA = [
     { k: 'streakStrength', type: 'range', label: 'Rain dirt', min: 0, max: 2.5, step: 0.01, help: 'How much dirt rainwater leaves where it runs off tops and down faces.' },
     { k: 'streakLength', type: 'range', label: 'Streak length', min: 4, max: 90, step: 1, help: 'How far water runs down a face before it soaks in.' },
     { k: 'streakCoverage', type: 'range', label: 'Drip spread', min: 0, max: 1, step: 0.01, help: '0 = water gathers into a few heavy drips; 1 = it spills evenly along every edge.' },
+    { k: 'windDir', type: 'range', label: 'Wind from', min: 0, max: 359, step: 1, unit: '°', help: '0 = north, 90 = east, 180 = south (the side the fronts face), 270 = west.' },
+    { k: 'windRain', type: 'range', label: 'Wind-driven rain', min: 0, max: 1.5, step: 0.01, help: 'Rain blown onto the faces that look into the wind; sheltered faces stay dry.' },
+    { k: 'soffitCreep', type: 'range', label: 'Soffit creep', min: 0, max: 1, step: 0.01, help: 'Water clinging to ledge undersides and running back to stain the wall just below.' },
+    { k: 'sunDrying', type: 'range', label: 'Sun drying', min: 0, max: 1, step: 0.01, help: 'South faces dry out and stay cleaner; north faces stay damp and greener.' },
+    { k: 'washing', type: 'range', label: 'Washing', min: 0, max: 1, step: 0.01, help: 'Heavy flows wash the middle of a streak clean, leaving darker edges and tails.' },
     { k: 'grimeHeight', type: 'range', label: 'Ground grime height', min: 0, max: 40, step: 1 },
     { k: 'grimeStrength', type: 'range', label: 'Ground grime', min: 0, max: 1, step: 0.01 },
     { k: 'moss', type: 'range', label: 'Moss', min: 0, max: 3, step: 0.05 },
@@ -353,33 +370,30 @@ function updateUndo() { $('#undo').disabled = hpos <= 0; $('#redo').disabled = h
 
 // ------------------------------------------------------------------ generation
 let current = null, timer = 0, viewing = false, firstShow = true;
-// the design itself (exported) and what the viewport shows (tiles, or a corner with walls attached)
-function buildScene() {
-  const palette = effPal();
-  if (P.piece !== 'corner') {
-    const tiles = Array.from({ length: +$('#tiles').value }, (_, k) => generate({ ...P, palette, seed: P.seed + k * 17 }));
-    return { design: tiles[0], shown: tiles };
-  }
-  const corner = generate({ ...P, palette });
-  if (!P.cornerPreview) return { design: corner, shown: [corner] };
-  // straight walls on both arms: west of the south-facing arm, and north of the east-facing arm
-  const wall = s => generate({ ...P, palette, piece: 'straight', width: 20, seed: P.seed + s });
-  const a = wall(101), b = rotateGrid(wall(202), 3), L = corner.W, D = P.thickness;
-  return { design: corner, shown: [composeGrids([{ g: corner, x: 0, z: 0 }, { g: a, x: -a.W, z: L - D }, { g: b, x: L - D, z: -b.D }])] };
+// generation runs in a worker; only the newest request is shown (falls back to the main thread)
+let worker = null, reqId = 0;
+try { worker = new Worker('worker.js', { type: 'module' }); } catch { worker = null; }
+function show(scene, ms) {
+  current = scene.design;
+  const corner = P.piece === 'corner', sameKind = (viewer.isoDir != null) === corner;
+  viewer.isoDir = corner ? [0.8, 0.5, 0.9] : null;                    // corners: look at the outer (south + east) faces
+  const shown = viewer.show(scene.shown, { keepCamera: !firstShow && sameKind }); firstShow = false;
+  showStats(current, ms, shown);
+  $('#busy').classList.remove('on');
 }
+if (worker) worker.onmessage = ({ data }) => {
+  if (data.id !== reqId || viewing) return;                            // an older request finished late
+  if (data.error) { toast('Generation failed: ' + data.error, 'err'); $('#busy').classList.remove('on'); return; }
+  show(data.scene, data.ms);
+};
 function regenerate() {
   if (viewing) return;
   clearTimeout(timer); $('#busy').classList.add('on');
   timer = setTimeout(() => {
-    try {
-      const t0 = performance.now(), scene = buildScene(), ms = performance.now() - t0;
-      current = scene.design;
-      const corner = P.piece === 'corner', sameKind = (viewer.isoDir != null) === corner;
-      viewer.isoDir = corner ? [0.8, 0.5, 0.9] : null;                // corners: look at the outer (south + east) faces
-      const shown = viewer.show(scene.shown, { keepCamera: !firstShow && sameKind }); firstShow = false;
-      showStats(current, ms, shown);
-    } catch (e) { console.error(e); toast('Generation failed: ' + e.message, 'err'); }
-    $('#busy').classList.remove('on');
+    const Pn = { ...P, palette: effPal() }, tiles = +$('#tiles').value;
+    if (worker) { worker.postMessage({ id: ++reqId, P: Pn, tiles }); return; }
+    try { const t0 = performance.now(), scene = buildScene(Pn, tiles); show(scene, performance.now() - t0); }
+    catch (e) { console.error(e); toast('Generation failed: ' + e.message, 'err'); $('#busy').classList.remove('on'); }
   }, 30);
 }
 function showStats(g, ms, shown) {
@@ -389,7 +403,7 @@ function showStats(g, ms, shown) {
   $('#stats').innerHTML = `<h4>Structure</h4>
     <div class="kv"><div><b>${g.W}</b><span>wide</span></div><div><b>${g.H}</b><span>tall</span></div><div><b>${g.D}</b><span>thick</span></div>
     <div><b>${total.toLocaleString()}</b><span>blocks</span></div><div><b>${counts.size}</b><span>types</span></div><div><b>${ms < 1000 ? ms.toFixed(0) + 'ms' : (ms / 1000).toFixed(1) + 's'}</b><span>build</span></div></div>
-    ${g.backLayout ? `<div class="help" style="color:var(--muted);margin:-4px 0 10px">Back: ${LAYOUT_NAMES[g.backLayout] || g.backLayout}</div>` : ''}
+    <div class="help" style="color:var(--muted);margin:-4px 0 10px">${g.faces ? `${g.faces} designed faces` : ''}${g.backLayout ? ` · other faces e.g. ${LAYOUT_NAMES[g.backLayout] || g.backLayout}` : ''}</div>
     <h4>Blocks</h4><div class="bom">${rows.map(([k, n]) => `<div><img src="${tex(k)}" alt=""><span>${nice(k)}</span><i>${n.toLocaleString()}</i><div class="bar"><b style="width:${n / max * 100}%"></b></div></div>`).join('')}</div>`;
 }
 
@@ -443,6 +457,44 @@ $('#doBatch').onclick = async e => {
   }
   toast(`Batch done: ${ok}/${n} saved`, ok === n ? 'ok' : 'err');
 };
+
+// ------------------------------------------------------------------ seed browser
+const hexRGB = new Map();
+const rgbOf = k => { const b = k.split('|')[0]; if (!hexRGB.has(b)) { const h = library[b]?.color || '#888888'; hexRGB.set(b, [1, 3, 5].map(i => parseInt(h.slice(i, i + 2), 16))); } return hexRGB.get(b); };
+// a quick 2D preview: walls seen from the front, mazes from above; nearer = brighter
+function thumbnail(g) {
+  const top = P.piece === 'maze' || P.piece === 'cross' || P.piece === 'tee';
+  const { W, H, D, data, keys } = g, at = (x, y, z) => (y * D + z) * W + x;
+  const w = W, h = top ? D : H, cv = document.createElement('canvas'); cv.width = w; cv.height = h;
+  const ctx = cv.getContext('2d'), img = ctx.createImageData(w, h);
+  for (let u = 0; u < w; u++) for (let v = 0; v < h; v++) {
+    let c = [18, 20, 22], shade = 1;
+    if (top) { for (let y = H - 1; y >= 0; y--) { const k = data[at(u, y, v)]; if (k) { c = rgbOf(keys[k]); shade = 0.45 + 0.55 * y / H; break; } } }
+    else { const y = H - 1 - v; for (let z = D - 1; z >= 0; z--) { const k = data[at(u, y, z)]; if (k) { c = rgbOf(keys[k]); shade = 1 - 0.04 * (D - 1 - z); break; } } }
+    const o = (v * w + u) * 4; img.data[o] = c[0] * shade; img.data[o + 1] = c[1] * shade; img.data[o + 2] = c[2] * shade; img.data[o + 3] = 255;
+  }
+  ctx.putImageData(img, 0, 0); return cv;
+}
+let seedWorker = null, seedBase = 0, seedJob = 0;
+function openSeeds(start) {
+  seedBase = start; const job = ++seedJob, grid = $('#seedGrid'); grid.innerHTML = '';
+  const Pn = { ...P, palette: effPal(), ivy: P.ivy }, seeds = Array.from({ length: 12 }, (_, i) => start + i);
+  const cards = seeds.map(sd => {
+    const c = document.createElement('div'); c.className = 'seedcard' + (sd === P.seed ? ' cur' : ''); c.innerHTML = `<div class="wait">…</div><span>${sd}</span>`;
+    c.onclick = () => { P.seed = sd; commit(); syncControls(); regenerate(); $('#dlgSeeds').close(); toast(`Seed ${sd}`); };
+    grid.appendChild(c); return c;
+  });
+  const done = (i, g) => { if (job !== seedJob) return; cards[i].querySelector('.wait')?.remove(); cards[i].prepend(thumbnail(g)); };
+  if (!seedWorker) { try { seedWorker = new Worker('worker.js', { type: 'module' }); } catch { seedWorker = null; } }
+  if (seedWorker) {
+    let i = 0;
+    const next = () => { if (i >= seeds.length || job !== seedJob) return; seedWorker.postMessage({ id: i, P: { ...Pn, seed: seeds[i] }, tiles: 1 }); };
+    seedWorker.onmessage = ({ data }) => { if (data.scene) done(data.id, data.scene.design); i++; next(); };
+    next();
+  } else seeds.forEach((sd, i) => setTimeout(() => done(i, generate({ ...Pn, seed: sd })), i * 30));
+}
+$('#seeds').onclick = () => { $('#dlgSeeds').showModal(); openSeeds(P.seed); };
+$('#seedMore').onclick = e => { e.preventDefault(); openSeeds(seedBase + 12); };
 
 // ------------------------------------------------------------------ open .schem
 $('#open').onclick = () => $('#fileIn').click();
@@ -522,6 +574,12 @@ function applyFilter() {
   });
 }
 $('#filter').oninput = applyFilter;
+const setAllSections = open => {
+  document.querySelectorAll('.sec').forEach(sec => { sec.classList.toggle('closed', !open); open ? openSecs.add(sec.dataset.id) : openSecs.delete(sec.dataset.id); });
+  LS.set('open', [...openSecs]);
+};
+$('#expandAll').onclick = () => setAllSections(true);
+$('#collapseAll').onclick = () => setAllSections(false);
 
 addEventListener('keydown', e => {
   if (e.target.matches('input, select, textarea')) return;
@@ -531,6 +589,7 @@ addEventListener('keydown', e => {
   else if ((e.ctrlKey || e.metaKey) && k === 's') { e.preventDefault(); $('#save').click(); }
   else if (k === 'r') $('#reseed').click();
   else if (k === 'm') remix();
+  else if (k === 'b') $('#seeds').click();
   else if (k === 'e') $('#export').click();
   else if (k === 'p') $('#shot').click();
   else if ('123456'.includes(k)) document.querySelectorAll('#views button')[+k - 1]?.click();
