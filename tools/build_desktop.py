@@ -72,8 +72,13 @@ def main():
     else:
         shutil.copyfile(build / 'native' / executable, stage / executable)
         (stage / executable).chmod(0o755)
-    for doc in ('README.md', 'LICENSE', 'THIRD_PARTY_NOTICES.md', 'SECURITY.md'):
-        shutil.copyfile(ROOT / doc, stage / doc)
+    for source in release_files():
+        relative = source.relative_to(ROOT)
+        if relative.parts[0] == 'docs' or (len(relative.parts) == 1 and source.suffix == '.md'):
+            dest = stage / relative
+            dest.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copyfile(source, dest)
+    shutil.copyfile(ROOT / 'LICENSE', stage / 'LICENSE')
     shutil.copytree(licenses, stage / 'licenses')
     (stage / 'START-HERE.txt').write_text(
         f'MazeForge {version} — Beta\n\nExtract the entire download, then double-click {executable}.\n'
@@ -83,7 +88,7 @@ def main():
         'Report bugs: https://github.com/OpenNerdz/mazeforge/issues\n\n'
         'These beta builds are unsigned. Windows and macOS may require first-launch approval.\n'
         'On Linux your file manager may ask permission to run an executable.\n'
-        'See README.md for platform details, compatibility and local data locations.\n', encoding='utf-8')
+        'See README.md for setup and docs/USER_GUIDE.md for local data locations.\n', encoding='utf-8')
     if system == 'macos':
         archive = out / f'{name}.zip'
         subprocess.run(['ditto', '-c', '-k', '--sequesterRsrc', '--keepParent', str(stage), str(archive)], check=True)

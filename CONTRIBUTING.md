@@ -1,5 +1,7 @@
 # Contributing
 
+See the [development guide](docs/DEVELOPMENT.md) for architecture and build commands.
+
 Open an issue for a bug or proposed feature. Include the app version, operating
 system, browser, expected result and a share code when it helps reproduce a design.
 Remove personal folder paths from screenshots and logs.

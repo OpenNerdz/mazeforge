@@ -9,6 +9,7 @@ ROOT = Path(__file__).resolve().parent.parent
 FILES = ('README.md', 'LICENSE', 'THIRD_PARTY_NOTICES.md', 'SECURITY.md', 'CHANGELOG.md',
          'server.py', 'start.sh', 'start.command', 'start.bat',
          'CONTRIBUTING.md', 'docs/RELEASING.md', 'docs/TEXTURES.md',
+         'docs/USER_GUIDE.md', 'docs/DEVELOPMENT.md',
          'docs/screenshot.png', 'docs/screenshot-maze.png')
 
 
