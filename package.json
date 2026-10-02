@@ -1,6 +1,6 @@
 {
   "name": "mazeforge",
-  "version": "2.0.0",
+  "version": "2.0.1-beta.1",
   "private": true,
   "description": "Design weathered walls and seeded mazes for Minecraft. Preview in 3D and export WorldEdit schematics.",
   "type": "module",

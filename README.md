@@ -1,5 +1,7 @@
 # MazeForge
 
+> **Beta software — bugs are expected.** Features and compatibility are still being tested. Back up your Minecraft world before pasting structures, and [report bugs](https://github.com/OpenNerdz/mazeforge/issues).
+
 **Build atmosphere, one block at a time.**
 
 Design weathered walls, junctions and seeded mazes for Minecraft Java Edition.
@@ -15,20 +17,43 @@ cloud service or telemetry.
 
 ## Start building
 
-1. Download the release ZIP and **extract the entire folder**.
-2. Install [Python 3.10 or newer](https://www.python.org/downloads/).
-3. Start the app using the launcher for your system:
+1. Open [Releases](https://github.com/OpenNerdz/mazeforge/releases) and download the **desktop file for your system**.
+2. **Extract the entire download**.
+3. Double-click the app below. Your usual browser opens automatically.
+
+**No coding, terminal commands, Python installation or account is needed for the desktop downloads.**
 
 | System | Launcher |
 | --- | --- |
-| Windows | Double-click `start.bat`. During Python installation, enable *Add python.exe to PATH*. |
-| macOS | Run `bash start.command` in Terminal from the extracted folder. Double-click also works if the launcher is executable. |
-| Linux | Run `bash start.sh` from the extracted folder. |
+| Windows 10/11, x64 | Download `windows-x64.zip`, extract it, then double-click **MazeForge.exe**. |
+| Mac with Apple Silicon | Download `macos-arm64.zip`, extract it, then double-click **MazeForge.app**. |
+| Mac with Intel | Download `macos-x64.zip`, extract it, then double-click **MazeForge.app**. |
+| Linux, x64 | Download `linux-x64.tar.gz`, extract it, then double-click **MazeForge**. |
 
-The workspace opens at <http://127.0.0.1:8765>. Use a current Chrome, Edge or Firefox
-browser with WebGL 2 enabled. Node.js and npm are needed only for development.
-If the browser does not open, visit that address manually. To stop the server,
-press **Ctrl+C** in its terminal.
+Desktop builds are tested on Windows, macOS 15 (both architectures) and Ubuntu 22.04.
+Linux needs a desktop browser and glibc 2.35 or newer; Alpine/musl and ARM Linux
+are not supported by these binaries. Use a current Chrome, Edge or Firefox browser
+with WebGL 2 enabled. Desktop downloads include Python and the app assets.
+
+**First launch:** beta builds are unsigned. Windows may show SmartScreen;
+macOS may ask you to approve the app in **System Settings → Privacy & Security**.
+Only approve a download you trust from this repository; never disable system protections.
+Linux file managers may ask you to allow launching an executable. Approval rules
+depend on your system, so a completely prompt-free launch cannot be guaranteed.
+
+The workspace opens at <http://127.0.0.1:8765>. Choose **More → Quit MazeForge**
+to stop the desktop app; closing a browser tab leaves it running. Double-clicking
+the app again reopens the workspace. No administrator privileges are required.
+
+<details>
+<summary>Run from source instead</summary>
+
+The source ZIP (`mazeforge-<version>.zip`, without an OS name) requires
+[Python 3.10 or newer](https://www.python.org/downloads/). Start `start.bat` on
+Windows, `bash start.command` on macOS or `bash start.sh` on Linux. Stop it with
+**Ctrl+C** in its terminal. Node.js and npm are needed only for development.
+
+</details>
 
 Choose a preset, adjust the settings, then select **Save to Minecraft** or
 **More → Download .schem**. In Minecraft, stand on the orange paste marker shown
@@ -99,17 +124,28 @@ Saving writes only to the folders you select. Existing schematics are preserved 
 from the same marked position. A copy of successful saves is retained in `exports/`.
 Added folder paths are stored locally in `folders.json`; both are excluded from Git.
 
+Desktop downloads keep `folders.json`, `exports/` and `local-textures/` in your
+own application data folder, so updates and moving the app preserve your data:
+
+| System | Local data folder |
+| --- | --- |
+| Windows | `%LOCALAPPDATA%\MazeForge` |
+| macOS | `~/Library/Application Support/MazeForge` |
+| Linux | `$XDG_DATA_HOME/mazeforge`, or `~/.local/share/mazeforge` |
+
+The source version keeps this data beside the app (`web/local-textures/` for imports).
+
 The server binds to `127.0.0.1`, accepts local host/origin requests, and serves only
 the web directory. No files or settings are uploaded. Keep it running on your own
 computer; it is a desktop companion, not an internet-facing server.
 
 ## Troubleshooting
 
-- **Python not found:** install Python 3.10+ and reopen the terminal. On Windows, rerun the installer with the PATH option enabled.
+- **Asked to install Python:** you downloaded the source ZIP. Choose the desktop download for your system instead.
 - **Blank preview:** enable browser hardware acceleration and WebGL 2, update the browser, and reload. Check that you extracted every file.
 - **Port already in use:** close another copy of the app or the program using port 8765.
 - **Unknown blocks in Minecraft:** import the client JAR for the version you play, and use blocks available in that version.
-- **Folder picker unavailable:** paste the full path instead. Linux native dialogs depend on the desktop's installed portal, Zenity, KDialog or Tk support.
+- **Folder picker unavailable:** paste the full path instead. Linux desktop dialogs use Zenity or KDialog when available; no extra packages are needed for manual paths.
 
 ## How generation works
 

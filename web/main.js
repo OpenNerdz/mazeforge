@@ -13,6 +13,7 @@ import { createSharing } from './ui/share.js';
 import { createSeeds } from './ui/seeds.js';
 import { createShell } from './ui/shell.js';
 import { createTextureImport } from './ui/textures.js';
+import { createDesktop } from './ui/desktop.js';
 import { $, toast, installTooltips, installFitBars } from './ui/dom.js';
 
 async function start() {
@@ -96,6 +97,7 @@ createSeeds(app);
 const loadLink = createSharing(app);
 createShell(app, panel);
 createTextureImport(app);
+createDesktop();
 installTooltips();
 installFitBars($('#stats'));
 app.sync();

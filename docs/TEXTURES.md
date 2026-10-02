@@ -53,8 +53,9 @@ and [Sponge format specification](https://github.com/SpongePowered/Schematic-Spe
 ## Reset and distribution
 
 Choose **Use built-in preview** to remove the imported preview files and return to
-the bundled library. Local imports live in `web/local-textures/`; Git ignores the
-entire directory, and the release packager excludes it by design.
+the bundled library. Desktop imports live in `local-textures/` inside your own
+MazeForge application data folder (see the README). The source version uses
+`web/local-textures/`. Imports are excluded from all release downloads by design.
 
 If you share the app, share its official release ZIP. Do not include local textures,
 game JARs, exports or `folders.json`. Importing assets locally does not grant

@@ -20,6 +20,7 @@ user's own computer. Browser extensions and other software running as that user
 may have access to the same local files and services.
 
 `folders.json` stores added paths, `exports/` stores saved schematics, and
-`web/local-textures/` stores imported game textures. These paths are ignored by
-Git and excluded by the release allowlist. Browser storage holds settings and
+`local-textures/` stores imported game textures. Desktop builds keep them in the
+per-user application data folder; source builds use the project folder and
+`web/local-textures/`. These paths are excluded by the release allowlist. Browser storage holds settings and
 presets. The app has no telemetry, account system, API keys or cloud backend.

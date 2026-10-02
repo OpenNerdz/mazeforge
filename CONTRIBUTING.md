@@ -17,5 +17,11 @@ credentials. Original preview patterns live in `tools/build_preview.py`.
 Rebuild three.js with `npm run vendor` after dependency changes, and retain its
 license in `THIRD_PARTY_NOTICES.md`.
 
+Desktop builds use Python 3.12 and PyInstaller 6.22.3. Run
+`python tools/build_desktop.py` on each target OS; builds cannot be cross-compiled.
+`tools/smoke_desktop.py <executable>` checks the bundled app with Python removed
+from PATH, including persistent textures, saving, relaunch and shutdown.
+The Desktop builds workflow produces the four supported downloads from an allowlist.
+
 Contributions are made under the project's MIT license. Security reports should
 follow [SECURITY.md](SECURITY.md).

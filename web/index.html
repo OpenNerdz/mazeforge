@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>MazeForge — Minecraft Structure Designer</title>
+<title>MazeForge Beta — Minecraft Structure Designer</title>
 <meta name="description" content="Design weathered walls and seeded mazes for Minecraft. Preview in 3D and export WorldEdit schematics.">
 <meta name="theme-color" content="#14171a">
 <link rel="icon" href="icon.svg" type="image/svg+xml">
@@ -91,12 +91,14 @@
         <hr>
         <button id="cleanMenu"><svg class="i"><use href="#i-focus"/></svg>Clean UI<kbd>C</kbd></button>
         <button id="shortcuts"><svg class="i"><use href="#i-keyboard"/></svg>Keyboard shortcuts<kbd>?</kbd></button>
+        <button id="quitApp" class="hidden"><svg class="i"><use href="#i-x"/></svg>Quit MazeForge</button>
       </div>
     </div>
     <button id="save" class="btn primary" data-tip="Save straight into your WorldEdit schematics folders · Ctrl+S"><svg class="i"><use href="#i-cube"/></svg>Save<span class="lbl">to Minecraft</span></button>
   </div>
 </header>
 
+<aside class="beta-notice" aria-label="Beta release notice"><strong>Beta</strong><span>Bugs are expected.</span><a href="https://github.com/OpenNerdz/mazeforge/issues" target="_blank" rel="noopener noreferrer">Report an issue</a></aside>
 <div class="layout">
   <button id="panelBackdrop" class="panel-backdrop hidden" aria-label="Close settings"></button>
   <aside class="panel" id="settingsPanel" aria-label="Structure settings">

@@ -133,6 +133,33 @@ class ServerTests(unittest.TestCase):
         self.assertEqual(self.request('POST', '/api/textures', {'reset': True})[0], 200)
         self.assertFalse((local / 'atlas.png').exists())
 
+    def test_desktop_textures_are_persistent_and_private(self):
+        state = self.root / 'desktop-state'
+        state.mkdir()
+        with patch.object(server, 'FROZEN', True), patch.object(server, 'APP', state):
+            payload = {'metadata': {'version': '1.20.1', 'dataVersion': 3465},
+                       'library': {'stone': {'id': 'minecraft:stone', 'color': '#808080', 'icon': 0, 'full': True}},
+                       'atlas': base64.b64encode(png(512, 16, bytes(512 * 16 * 4))).decode()}
+            self.assertEqual(self.request('POST', '/api/textures', payload)[0], 200)
+            self.assertTrue((state / 'local-textures/atlas.png').is_file())
+            self.assertFalse((self.web / 'local-textures').exists())
+            self.assertEqual(self.request('GET', '/local-textures/atlas.png')[0], 200)
+            self.assertEqual(json.loads(self.request('GET', '/local-textures/metadata.json')[1])['dataVersion'], 3465)
+            self.assertEqual(self.request('GET', '/local-textures/../folders.json')[0], 403)
+            self.assertEqual(self.request('GET', '/local-textures/')[0], 403)
+
+    def test_desktop_shutdown_requires_local_json(self):
+        with patch.object(server, 'FROZEN', True), patch.object(self.http, 'shutdown') as shutdown:
+            self.assertEqual(self.request('POST', '/api/quit', {}, {'Origin': 'https://example.invalid'})[0], 403)
+            self.assertEqual(self.request('POST', '/api/quit', {}, {'Content-Type': 'text/plain'})[0], 403)
+            shutdown.assert_not_called()
+            self.assertEqual(self.request('POST', '/api/quit', {})[0], 200)
+            for _ in range(100):
+                if shutdown.called:
+                    break
+                threading.Event().wait(0.01)
+            shutdown.assert_called_once()
+
 
 if __name__ == '__main__':
     unittest.main()

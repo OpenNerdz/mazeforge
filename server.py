@@ -6,6 +6,7 @@ WorldEdit schematics folders it finds on this PC. Only listens on 127.0.0.1.
 """
 import base64
 import contextlib
+import ctypes
 import glob
 import json
 import mimetypes
@@ -20,10 +21,26 @@ import webbrowser
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
-APP = Path(__file__).resolve().parent
-WEB = APP / 'web'
-EXPORTS = APP / 'exports'
 HOME = Path.home()
+FROZEN = getattr(sys, 'frozen', False)
+IS_WIN, IS_MAC = sys.platform.startswith('win'), sys.platform == 'darwin'
+BUNDLE = Path(__file__).resolve().parent
+
+
+def workspace_dir():
+    """Keep desktop data outside temporary bundles and read-only app installations."""
+    if not FROZEN:
+        return BUNDLE
+    if IS_WIN:
+        return Path(os.environ.get('LOCALAPPDATA') or HOME / 'AppData/Local') / 'MazeForge'
+    if IS_MAC:
+        return HOME / 'Library/Application Support/MazeForge'
+    return Path(os.environ.get('XDG_DATA_HOME') or HOME / '.local/share') / 'mazeforge'
+
+
+APP = workspace_dir()
+WEB = BUNDLE / 'web'
+EXPORTS = APP / 'exports'
 PORT = 8765
 DISCOVERED = []
 SAFE = re.compile(r'^[A-Za-z0-9_\-]{0,60}$')
@@ -37,7 +54,10 @@ mimetypes.add_type('application/json', '.json')
 # the usual places, then work out where WorldEdit keeps its schematics in each.
 
 CUSTOM_FILE = APP / 'folders.json'          # extra folders the user added in the app
-IS_WIN, IS_MAC = sys.platform.startswith('win'), sys.platform == 'darwin'
+
+
+def local_textures():
+    return APP / 'local-textures' if FROZEN else WEB / 'local-textures'
 
 
 def data_dirs():
@@ -245,7 +265,7 @@ class Handler(SimpleHTTPRequestHandler):
         super().__init__(*a, directory=str(WEB), **k)
 
     def log_message(self, fmt, *args):
-        if '/api/' in (args[0] if args else ''):
+        if sys.stderr and '/api/' in (args[0] if args else ''):
             sys.stderr.write('[studio] ' + (fmt % args) + '\n')
 
     def end_headers(self):
@@ -266,10 +286,25 @@ class Handler(SimpleHTTPRequestHandler):
         if not local_request(self):
             return self._json(403, {'error': 'forbidden'})
         if self.path == '/api/ping':
-            return self._json(200, {'ok': True, 'app': 'mazeforge'})
+            return self._json(200, {'ok': True, 'app': 'mazeforge', 'desktop': FROZEN})
         if self.path == '/api/assets':
-            local = all((WEB / 'local-textures' / f).is_file() for f in ('atlas.png', 'library.json'))
+            local = all((local_textures() / f).is_file() for f in ('atlas.png', 'library.json'))
             return self._json(200, {'local': local})
+        if self.path.startswith('/local-textures/'):
+            name = self.path.removeprefix('/local-textures/')
+            folder = local_textures()
+            path = folder / name
+            if name not in ('atlas.png', 'library.json', 'metadata.json') or folder.is_symlink() or not path.resolve().is_relative_to(folder.resolve()):
+                return self._json(403, {'error': 'forbidden'})
+            if not path.is_file():
+                return self._json(404, {'error': 'not found'})
+            data = path.read_bytes()
+            self.send_response(200)
+            self.send_header('Content-Type', 'image/png' if name.endswith('.png') else 'application/json')
+            self.send_header('Content-Length', str(len(data)))
+            self.end_headers()
+            self.wfile.write(data)
+            return None
         if self.path in ('/api/targets', '/api/targets?discover=1'):
             return self._json(200, {'targets': find_targets(discover=self.path.endswith('?discover=1'))})
         if not Path(self.translate_path(self.path)).resolve().is_relative_to(WEB.resolve()):
@@ -277,7 +312,7 @@ class Handler(SimpleHTTPRequestHandler):
         return super().do_GET()
 
     def do_POST(self):
-        if self.path not in ('/api/save', '/api/folders', '/api/pick', '/api/textures'):
+        if self.path not in ('/api/save', '/api/folders', '/api/pick', '/api/textures', '/api/quit'):
             return self._json(404, {'error': 'not found'})
         # JSON only: a cross-site page can't send that without a CORS preflight, which we never answer
         if not local_request(self) or not (self.headers.get('Content-Type') or '').startswith('application/json'):
@@ -291,6 +326,12 @@ class Handler(SimpleHTTPRequestHandler):
             req = json.loads(self.rfile.read(n) or b'{}')
             if not isinstance(req, dict):
                 return self._json(400, {'error': 'expected a JSON object'})
+            if self.path == '/api/quit':
+                if not FROZEN:
+                    return self._json(404, {'error': 'not available'})
+                self._json(200, {'ok': True})
+                threading.Thread(target=self.server.shutdown, daemon=True).start()
+                return None
             if self.path == '/api/textures':
                 return self._textures(req)
             if self.path == '/api/pick':
@@ -342,7 +383,7 @@ class Handler(SimpleHTTPRequestHandler):
             return self._json(500, {'error': str(e)})
 
     def _textures(self, req):
-        local = WEB / 'local-textures'
+        local = local_textures()
         if local.is_symlink():
             return self._json(400, {'error': 'local texture folder must be inside the app'})
         if req.get('reset') is True:
@@ -372,7 +413,7 @@ class Handler(SimpleHTTPRequestHandler):
             return self._json(400, {'error': 'invalid preview dimensions'})
         local.mkdir(exist_ok=True)
         # Write only these three fixed files, never archive paths or user-provided names.
-        with tempfile.TemporaryDirectory(dir=WEB) as staging:
+        with tempfile.TemporaryDirectory(dir=local.parent) as staging:
             stage = Path(staging)
             (stage / 'atlas.png').write_bytes(atlas)
             (stage / 'library.json').write_text(json.dumps(library, separators=(',', ':')))
@@ -423,23 +464,49 @@ print(out.get('p', ''))
 # Windows: tk's askdirectory is the standard Explorer "Select Folder" dialog there
 TK_PICK = ('import tkinter as t, tkinter.filedialog as f; r = t.Tk(); r.withdraw(); r.attributes("-topmost", True); '
            'print(f.askdirectory(title="Choose a Minecraft folder") or "")')
+WIN_PICK = ('[Console]::OutputEncoding = [System.Text.Encoding]::UTF8; '
+            'Add-Type -AssemblyName System.Windows.Forms; '
+            '$picker = New-Object System.Windows.Forms.FolderBrowserDialog; '
+            '$picker.Description = "Choose a Minecraft folder"; '
+            'if ($picker.ShowDialog() -eq "OK") { [Console]::WriteLine($picker.SelectedPath) }')
+
+
+def external_env():
+    """System folder pickers and browsers must use system libraries, not bundled ones."""
+    env = os.environ.copy()
+    if FROZEN:
+        if 'LD_LIBRARY_PATH_ORIG' in env:
+            env['LD_LIBRARY_PATH'] = env['LD_LIBRARY_PATH_ORIG']
+        else:
+            env.pop('LD_LIBRARY_PATH', None)
+    return env
+
+
+def run_system(cmd, **kwargs):
+    if FROZEN and IS_WIN:
+        # Restore Windows' normal DLL lookup for external programs.
+        ctypes.windll.kernel32.SetDllDirectoryW(None)
+        kwargs['creationflags'] = subprocess.CREATE_NO_WINDOW
+    return subprocess.run(cmd, env=external_env(), check=False, **kwargs)
 
 
 def pick_folder():
     """Open this PC's own folder picker; returns the chosen path or ''."""
     if IS_WIN:
-        tries = [[sys.executable, '-c', TK_PICK]]
+        tries = [['powershell.exe', '-NoProfile', '-STA', '-Command', WIN_PICK]] if FROZEN else [[sys.executable, '-c', TK_PICK]]
     elif IS_MAC:
         tries = [['osascript', '-e', 'POSIX path of (choose folder with prompt "Choose a Minecraft folder")']]
     else:
         kde = 'KDE' in os.environ.get('XDG_CURRENT_DESKTOP', '').upper()
-        tries = [[sys.executable, '-c', PORTAL_PICK]]
+        tries = [] if FROZEN else [[sys.executable, '-c', PORTAL_PICK]]
         tries += [['kdialog', '--getexistingdirectory', str(HOME), '--title', 'Choose a Minecraft folder']] if kde else []
         tries += [['zenity', '--file-selection', '--directory', '--title=Choose a Minecraft folder'],
-                  ['kdialog', '--getexistingdirectory', str(HOME)], [sys.executable, '-c', TK_PICK]]
+                  ['kdialog', '--getexistingdirectory', str(HOME)]]
+        if not FROZEN:
+            tries.append([sys.executable, '-c', TK_PICK])
     for cmd in tries:
         try:
-            r = subprocess.run(cmd, capture_output=True, text=True, timeout=600, check=False)
+            r = run_system(cmd, capture_output=True, text=True, encoding='utf-8', timeout=600)
         except (OSError, subprocess.TimeoutExpired):
             continue
         if r.returncode == 0:
@@ -457,21 +524,46 @@ def already_running():
         return False
 
 
+def open_workspace(url):
+    if FROZEN and not IS_WIN and not IS_MAC:
+        subprocess.Popen(['xdg-open', url], env=external_env())
+    else:
+        webbrowser.open(url)
+
+
 def main():
+    APP.mkdir(parents=True, exist_ok=True, mode=0o700)
     url = f'http://127.0.0.1:{PORT}/'
     open_browser = '--no-browser' not in sys.argv
     if already_running():
         print('Studio already running at', url)
         if open_browser:
-            webbrowser.open(url)
+            open_workspace(url)
         return
     srv = ThreadingHTTPServer(('127.0.0.1', PORT), Handler)
     print('MazeForge running at', url, '(Ctrl+C to stop)')
     if open_browser:
-        threading.Timer(0.6, lambda: webbrowser.open(url)).start()
+        threading.Timer(0.6, lambda: open_workspace(url)).start()
     with contextlib.suppress(KeyboardInterrupt):
         srv.serve_forever()
+    srv.server_close()
 
 
 if __name__ == '__main__':
-    main()
+    try:
+        main()
+    except OSError:
+        if not FROZEN:
+            raise
+        message = ('MazeForge could not start. Another program may be using port 8765, '
+                   'or your application data folder may not be writable. '
+                   'Close other copies of MazeForge and try again.')
+        if IS_WIN:
+            ctypes.windll.user32.MessageBoxW(None, message, 'MazeForge — Could not start', 0x10)
+        elif IS_MAC:
+            run_system(['osascript', '-e', f'display alert "MazeForge could not start" message "{message}" as critical'])
+        else:
+            with contextlib.suppress(OSError):
+                run_system(['zenity', '--error', '--title=MazeForge', '--text=' + message])
+            print(message, file=sys.stderr)
+        sys.exit(1)

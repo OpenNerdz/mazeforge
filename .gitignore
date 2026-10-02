@@ -3,6 +3,8 @@ exports/
 folders.json
 web/local-textures/
 dist/
+build/
+*.spec
 .venv/
 .env
 .env.*

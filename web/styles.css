@@ -112,7 +112,10 @@ input[type=range]:focus-visible { outline: none; }
 .group.joined .btn:hover { position: relative; z-index: 1; }
 
 /* ---------- layout */
-.layout { display: grid; grid-template-columns: 350px 1fr; height: calc(100% - 52px); }
+.beta-notice { height: 28px; display: flex; align-items: center; justify-content: center; gap: 8px; padding: 0 8px; background: #2a2010; color: var(--soft); border-bottom: 1px solid #5a4217; font-size: 12px; }
+.beta-notice strong, .beta-notice a { color: var(--accent2); }
+.beta-notice a { text-underline-offset: 2px; }
+.layout { display: grid; grid-template-columns: 350px 1fr; height: calc(100% - 80px); }
 
 /* ---------- side panel */
 .panel { display: flex; flex-direction: column; min-height: 0; background: var(--panel); border-right: 1px solid var(--line); }

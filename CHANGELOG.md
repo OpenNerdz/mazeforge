@@ -1,8 +1,16 @@
 # Changelog
 
-## 2.0.0
+## 2.0.1-beta.1
 
-First release prepared for public distribution, under the name **MazeForge**.
+- Standalone Windows, macOS (Apple Silicon and Intel) and Linux downloads with Python bundled.
+- Persistent per-user desktop data and a Quit action in the workspace.
+- Clearly label the app and documentation as beta software with expected bugs.
+- Add a visible issue-reporting link in the workspace on desktop and mobile.
+- Mark public releases as prereleases while testing continues.
+
+## 2.0.0 (beta)
+
+First public beta release, under the name **MazeForge**. Bugs are expected while testing continues.
 
 - Updated identity, app icon, documentation and portable release packaging.
 - Vanilla-only default palettes, original preview materials and authentic textures imported from an explicitly selected Java client JAR.
