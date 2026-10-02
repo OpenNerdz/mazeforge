@@ -3,7 +3,7 @@
 ## Unreleased
 
 - Feature the current beta in GitHub’s Latest release slot and use a lasting download link.
-- Validate desktop builds on pull requests and check for dependency updates weekly.
+- Validate desktop builds on pull requests and group routine dependency updates into monthly batches.
 - Document release verification and publishing.
 
 ## 2.0.1-beta.1
