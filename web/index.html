@@ -3,12 +3,12 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Maze Structure Studio</title>
-<link rel="icon" href="icon.png">
+<title>MazeForge — Minecraft Structure Designer</title>
+<meta name="description" content="Design weathered walls and seeded mazes for Minecraft. Preview in 3D and export WorldEdit schematics.">
+<meta name="theme-color" content="#14171a">
+<link rel="icon" href="icon.svg" type="image/svg+xml">
 <link rel="stylesheet" href="styles.css">
-<script type="importmap">
-{ "imports": { "three": "./lib/three.module.min.js", "three/addons/controls/OrbitControls.js": "./lib/OrbitControls.js" } }
-</script>
+<link rel="modulepreload" href="main.js">
 </head>
 <body>
 <!-- icon set: 24px line icons, used as <svg class="i"><use href="#i-name"/></svg> -->
@@ -33,7 +33,6 @@
     <symbol id="i-spin" viewBox="0 0 24 24"><path d="M20.5 12a8.5 8.5 0 1 1-2.8-6.3L20.5 8"/><path d="M20.5 3.5V8H16"/></symbol>
     <symbol id="i-pin" viewBox="0 0 24 24"><path d="M12 21s-6.5-5.8-6.5-10.5a6.5 6.5 0 0 1 13 0C18.5 15.2 12 21 12 21z"/><circle cx="12" cy="10.5" r="2.3"/></symbol>
     <symbol id="i-camera" viewBox="0 0 24 24"><path d="M4.5 8h2.8l1.9-2.5h5.6L16.7 8h2.8a1 1 0 0 1 1 1v9.5a1 1 0 0 1-1 1h-15a1 1 0 0 1-1-1V9a1 1 0 0 1 1-1z"/><circle cx="12" cy="13.3" r="3.3"/></symbol>
-    <symbol id="i-tiles" viewBox="0 0 24 24"><rect x="2.5" y="6" width="5.5" height="12" rx="1"/><rect x="9.25" y="6" width="5.5" height="12" rx="1"/><rect x="16" y="6" width="5.5" height="12" rx="1"/></symbol>
     <symbol id="i-search" viewBox="0 0 24 24"><circle cx="11" cy="11" r="6.5"/><path d="m20 20-4.4-4.4"/></symbol>
     <symbol id="i-expand" viewBox="0 0 24 24"><path d="m7.5 15 4.5 4.5 4.5-4.5M7.5 9 12 4.5 16.5 9"/></symbol>
     <symbol id="i-collapse" viewBox="0 0 24 24"><path d="m7.5 19.5 4.5-4.5 4.5 4.5M7.5 4.5 12 9l4.5-4.5"/></symbol>
@@ -59,10 +58,11 @@
 </svg>
 
 <header class="topbar" data-fit-max="6">
-  <div class="brand"><img src="icon.png" alt=""><b class="lbl">Maze Structure Studio</b></div>
+  <button id="panelToggle" class="btn icon mobile-only" aria-label="Open settings" aria-controls="settingsPanel" aria-expanded="false"><svg class="i"><use href="#i-sliders"/></svg></button>
+  <div class="brand"><img src="icon.svg" alt=""><b class="lbl">MazeForge</b></div>
   <div class="doc">
-    <input id="name" class="field name" spellcheck="false" data-tip="Design name — also the file name">
-    <select id="preset" class="field extra" data-tip="Start from a preset"></select>
+    <input aria-label="Design name" id="name" class="field name" spellcheck="false" data-tip="Design name — also the file name">
+    <select aria-label="Starting preset" id="preset" class="field extra" data-tip="Start from a preset"></select>
   </div>
   <div class="group extra">
     <button id="undo" class="btn icon" data-tip="Undo · Ctrl+Z"><svg class="i"><use href="#i-undo"/></svg></button>
@@ -85,6 +85,7 @@
         <hr class="clean-only">
         <button id="savePreset"><svg class="i"><use href="#i-bookmark"/></svg>Save as preset…</button>
         <button id="open"><svg class="i"><use href="#i-folder"/></svg>Open a .schem file…</button>
+        <button id="textures"><svg class="i"><use href="#i-palette"/></svg>Minecraft textures…</button>
         <button id="batch"><svg class="i"><use href="#i-stack"/></svg>Batch export…</button>
         <button id="export"><svg class="i"><use href="#i-download"/></svg>Download .schem<kbd>E</kbd></button>
         <hr>
@@ -97,7 +98,8 @@
 </header>
 
 <div class="layout">
-  <aside class="panel">
+  <button id="panelBackdrop" class="panel-backdrop hidden" aria-label="Close settings"></button>
+  <aside class="panel" id="settingsPanel" aria-label="Structure settings">
     <div class="panelhead">
       <nav class="tabs" id="tabs">
         <button data-t="shape"><svg class="i"><use href="#i-cube"/></svg>Shape</button>
@@ -106,17 +108,19 @@
         <button data-t="blocks"><svg class="i"><use href="#i-palette"/></svg>Blocks</button>
       </nav>
       <div class="search">
-        <label class="searchbox"><svg class="i"><use href="#i-search"/></svg><input id="filter" placeholder="Search all settings" spellcheck="false"></label>
+        <label class="searchbox"><svg class="i"><use href="#i-search"/></svg><input aria-label="Search all settings" id="filter" placeholder="Search all settings" spellcheck="false"></label>
         <button id="expandAll" class="btn icon quiet" data-tip="Expand all sections"><svg class="i"><use href="#i-expand"/></svg></button>
         <button id="collapseAll" class="btn icon quiet" data-tip="Collapse all sections"><svg class="i"><use href="#i-collapse"/></svg></button>
       </div>
       <label class="advrow" data-tip="Show every setting, including the fine-tuning ones"><span>Advanced settings</span><span class="switch"><input type="checkbox" id="advanced"><span></span></span></label>
+      <select id="presetMobile" class="field mobile-only" aria-label="Starting preset"></select>
     </div>
     <div id="controls"></div>
   </aside>
 
   <main class="stage">
-    <canvas id="view"></canvas>
+    <canvas id="view" aria-label="Interactive 3D structure preview"></canvas>
+    <div id="startup" class="startup" role="status">Preparing your workspace…</div>
     <div class="busy" id="busy"></div>
     <div class="viewbar top" data-fit-max="3">
     <div class="glass seg" id="views">
@@ -147,7 +151,8 @@
 <dialog id="dlgSave">
   <form method="dialog">
     <header><h3>Save to Minecraft</h3><button class="btn icon quiet" value="cancel" data-tip="Close"><svg class="i"><use href="#i-x"/></svg></button></header>
-    <div class="tgt-head"><p class="lead">WorldEdit schematics folders found on this PC</p><button type="button" id="rescan" class="btn icon quiet" data-tip="Search again"><svg class="i"><use href="#i-spin"/></svg></button></div>
+    <div class="tgt-head"><p class="lead">Choose where to save</p><button type="button" id="rescan" class="btn" data-tip="Check standard launcher locations on this computer"><svg class="i"><use href="#i-search"/></svg>Find game folders</button></div>
+    <p class="hint">Folders are checked only when you choose Find game folders. You can also add any game, server or schematic folder below.</p>
     <div id="targets" class="targets"></div>
     <div class="addfolder">
       <input id="addPath" class="field" placeholder="Not listed? Paste a Minecraft, instance or server folder" spellcheck="false">
@@ -159,6 +164,18 @@
     <label class="check" id="chunkRow"><input type="checkbox" id="chunked"> Split into chunks of <input type="number" id="chunkSize" class="field tiny" value="64" min="16" max="256"> blocks</label>
     <p class="hint"><code id="loadHint"></code></p>
     <footer><button value="cancel" class="btn">Cancel</button><button id="doSave" value="ok" class="btn primary">Save</button></footer>
+  </form>
+</dialog>
+
+<dialog id="dlgTextures">
+  <form method="dialog">
+    <header><h3>Minecraft textures</h3><button class="btn icon quiet" aria-label="Close" value="cancel"><svg class="i"><use href="#i-x"/></svg></button></header>
+    <p class="lead">Use the textures from the version you play.</p>
+    <p>Choose your installed Minecraft Java Edition client JAR (1.14 or newer). Only the file you choose is read. Textures stay on this computer.</p>
+    <p class="hint">The official launcher keeps client JARs in its versions folder. Other launchers often keep them in their libraries folder. A server JAR contains no usable textures.</p>
+    <input id="textureFile" type="file" accept=".jar" class="hidden" aria-label="Minecraft client JAR">
+    <p id="textureStatus" class="hint" role="status">The built-in preview works without importing anything.</p>
+    <footer><button type="button" id="resetTextures" class="btn">Use built-in preview</button><button type="button" id="chooseTextures" class="btn primary">Choose client JAR</button></footer>
   </form>
 </dialog>
 
@@ -211,6 +228,6 @@
 
 <input type="file" id="fileIn" accept=".schem" hidden>
 <div id="toasts"></div>
-<script type="module" src="app.js"></script>
+<script type="module" src="main.js"></script>
 </body>
 </html>

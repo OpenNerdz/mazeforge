@@ -29,16 +29,21 @@ function writeTag(w, t, v) {
 export function stateString(key, library) {
   const [base, variant] = key.split('|');
   const id = library[base]?.id ?? (base.includes(':') ? base : 'minecraft:' + base);
+  const state = props => {
+    const valid = library[base]?.properties;
+    const entries = Object.entries(props).filter(([k, v]) => !valid || valid[k]?.includes(String(v)));
+    return id + (entries.length ? `[${entries.map(([k, v]) => `${k}=${v}`).join(',')}]` : '');
+  };
   if (base === 'iron_bars') {
     const h = variant === 'h', z = variant === 'z';
-    return `${id}[east=${h},north=${z},south=${z},waterlogged=false,west=${h}]`;
+    return state({ east: h, north: z, south: z, waterlogged: false, west: h });
   }
-  if (base === 'chain') return `${id}[axis=${variant === 'h' ? 'x' : variant === 'z' ? 'z' : 'y'},waterlogged=false]`;
+  if (base === 'chain') return state({ axis: variant === 'h' ? 'x' : variant === 'z' ? 'z' : 'y', waterlogged: false });
   if (base === 'vine') {
     const f = variant || 'n', has = c => f.includes(c);
-    return `${id}[east=${has('e')},north=${has('n')},south=${has('s')},up=false,west=${has('w')}]`;
+    return state({ east: has('e'), north: has('n'), south: has('s'), up: false, west: has('w') });
   }
-  if (base.endsWith('_leaves')) return `${id}[distance=7,persistent=true,waterlogged=false]`;
+  if (base.endsWith('_leaves')) return state({ distance: 7, persistent: true, waterlogged: false });
   return id;
 }
 
@@ -70,7 +75,7 @@ export async function writeSchem(grid, library, offset = [0, 0, -grid.D]) {
     while (true) { const b = v & 0x7f; v >>>= 7; if (v) vw.u8(b | 0x80); else { vw.u8(b); break; } }
   }
   const root = [
-    [T.INT, 'Version', 2], [T.INT, 'DataVersion', DATA_VERSION],
+    [T.INT, 'Version', 2], [T.INT, 'DataVersion', library.dataVersion || DATA_VERSION],
     [T.SHORT, 'Width', W], [T.SHORT, 'Height', H], [T.SHORT, 'Length', D],
     [T.INTS, 'Offset', [0, 0, 0]],
     [T.COMPOUND, 'Metadata', [[T.INT, 'WEOffsetX', offset[0]], [T.INT, 'WEOffsetY', offset[1]], [T.INT, 'WEOffsetZ', offset[2]]]],
@@ -99,7 +104,7 @@ function readNBT(bytes) {
       case 7: { const n = dv.getInt32(p); p += 4; const v = bytes.subarray(p, p + n); p += n; return v; }
       case 8: return str();
       case 9: { const et = dv.getInt8(p++); const n = dv.getInt32(p); p += 4; const a = []; for (let i = 0; i < n; i++) a.push(pay(et)); return a; }
-      case 10: { const o = {}; while (true) { const tt = dv.getInt8(p++); if (!tt) return o; const k = str(); o[k] = pay(tt); } }
+      case 10: { const o = {}; for (let tt = dv.getInt8(p++); tt; tt = dv.getInt8(p++)) o[str()] = pay(tt); return o; }
       case 11: { const n = dv.getInt32(p); p += 4; const a = new Int32Array(n); for (let i = 0; i < n; i++) { a[i] = dv.getInt32(p); p += 4; } return a; }
       case 12: { const n = dv.getInt32(p); p += 4; const a = []; for (let i = 0; i < n; i++) { a.push(dv.getBigInt64(p)); p += 8; } return a; }
     }
@@ -118,7 +123,7 @@ export async function readSchem(buf) {
   const keys = [], kmap = new Map();
   const toKey = s => {
     const [id, props = ''] = s.split('[');
-    let base = id.replace(/^minecraft:/, '').replace(/^create:/, '');
+    const base = id.replace(/^minecraft:/, '').replace(/^create:/, '');
     if (base === 'air' || base === 'cave_air' || base === 'void_air' || base === 'structure_void') return 'air';
     if (base === 'iron_bars' || base === 'chain') return base + (/east=true|west=true|axis=x/.test(props) ? '|h' : /north=true|south=true|axis=z/.test(props) ? '|z' : '|v');
     if (base === 'vine') { const f = ['e', 'n', 's', 'w'].filter(c => new RegExp({ e: 'east', n: 'north', s: 'south', w: 'west' }[c] + '=true').test(props)); return 'vine|' + (f.join('') || 'n'); }
@@ -141,5 +146,5 @@ export async function readSchem(buf) {
   } else if (airIdx === undefined) {
     keys.unshift('air'); for (let j = 0; j < data.length; j++) data[j] += 1;
   }
-  return { W, H, D, data, keys };
+  return { W, H, D, data, keys, dataVersion: root.DataVersion };
 }

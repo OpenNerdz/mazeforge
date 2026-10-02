@@ -1,0 +1,22 @@
+name: Bug report
+description: Report a problem with MazeForge
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: What happened?
+      description: Include steps to reproduce, what you expected, and what actually happened.
+    validations:
+      required: true
+  - type: input
+    id: environment
+    attributes:
+      label: App version, operating system and browser
+      placeholder: 2.0.0, Windows 11, Chrome
+    validations:
+      required: true
+  - type: textarea
+    id: design
+    attributes:
+      label: Share code or screenshots
+      description: Optional. Remove personal folder paths and private information before posting.

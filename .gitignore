@@ -1,6 +1,16 @@
 # personal output and settings
 exports/
 folders.json
+web/local-textures/
+dist/
+.venv/
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.p12
+*.pfx
 
 # python / node
 __pycache__/

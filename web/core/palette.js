@@ -28,6 +28,7 @@ export function effectivePalette(P, library) {
   if (!P.autoPalette) return { palette: base, sorted: [], auto: new Set() };
   const keys = [...new Set((P.autoBlocks || []).filter(k => library[k]))];
   if (!keys.length) return { palette: base, sorted: [], auto: new Set() };
+  /** @type {{k: string, L: number, h: number, s: number, r?: number, br?: number, accent?: boolean}[]} */
   const sorted = keys.map(k => ({ k, ...analyze(library[k].color) })).sort((a, b) => b.L - a.L);
   const Lmax = sorted[0].L, Lmin = sorted[sorted.length - 1].L, span = Math.max(1e-6, Lmax - Lmin);
   for (const e of sorted) e.r = (Lmax - e.L) / span;                 // 0 = lightest, 1 = darkest

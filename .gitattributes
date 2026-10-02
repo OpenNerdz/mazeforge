@@ -2,5 +2,5 @@
 *.bat text eol=crlf
 *.png binary
 *.schem binary
-web/lib/** linguist-vendored
-web/textures/** linguist-vendored
+web/lib/three.js linguist-generated
+web/textures/** linguist-generated

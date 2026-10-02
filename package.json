@@ -1,14 +1,31 @@
 {
-  "name": "maze-structure-studio",
-  "version": "1.0.0",
+  "name": "mazeforge",
+  "version": "2.0.0",
   "private": true,
-  "description": "Design, preview and export Maze Runner-style wall structures for Minecraft as WorldEdit schematics.",
+  "description": "Design weathered walls and seeded mazes for Minecraft. Preview in 3D and export WorldEdit schematics.",
   "type": "module",
   "scripts": {
     "start": "python3 server.py",
-    "test": "node tests/run.mjs"
+    "test": "node tests/run.mjs",
+    "check": "biome lint && tsc -p . && tsc -p tsconfig.worker.json",
+    "vendor": "node tools/vendor.mjs",
+    "test:server": "python3 -m unittest discover -s tests -p \"test_*.py\"",
+    "package": "python3 tools/package_release.py"
   },
   "engines": {
-    "node": ">=20"
+    "node": ">=22"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "^2.5.14",
+    "@types/node": "^22.20.4",
+    "@types/three": "^0.186.0",
+    "esbuild": "^0.28.2",
+    "three": "^0.186.1",
+    "typescript": "^7.0.2"
+  },
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/OpenNerdz/mazeforge.git"
   }
 }

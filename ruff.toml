@@ -1,0 +1,6 @@
+line-length = 140
+target-version = "py310"
+
+[lint]
+select = ["E", "F", "W", "B", "UP", "SIM", "PL"]
+ignore = ["E501", "E701", "E702", "PLR0912", "PLR0915", "PLR2004", "PLR0911", "SIM108", "PLW2901"]

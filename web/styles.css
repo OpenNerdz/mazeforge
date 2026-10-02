@@ -1,4 +1,4 @@
-/* Maze Structure Studio — one design system: tokens, base, components, then each area of the app. */
+/* MazeForge — one design system: tokens, base, components, then each area of the app. */
 
 /* ---------- tokens */
 :root {
@@ -98,7 +98,7 @@ input[type=range]:focus-visible { outline: none; }
 
 /* ---------- top bar */
 .topbar { height: 52px; display: flex; align-items: center; gap: 10px; padding: 0 12px; border-bottom: 1px solid var(--line); background: var(--panel); }
-.brand { display: flex; align-items: center; gap: 9px; width: 338px; flex: none; font-size: 13.5px; letter-spacing: .1px; }
+.brand { display: flex; align-items: center; gap: 9px; width: 190px; flex: none; font-size: 13.5px; letter-spacing: .1px; }
 .brand img { width: 26px; height: 26px; border-radius: 7px; }
 .doc { display: flex; gap: 6px; }
 .doc .name { width: 160px; font-weight: 500; }
@@ -142,7 +142,7 @@ input[type=range]:focus-visible { outline: none; }
 .sec-h .reset:hover { color: var(--text); border-color: var(--line2); }
 .sec-b { display: grid; gap: 12px; padding: 2px 14px 14px; }
 .sec.closed .sec-b { display: none; }
-.sec-b > .help { color: var(--faint); font-size: 11.5px; margin: 0; }
+.sec-b .help { color: var(--faint); font-size: 11.5px; margin: 0; }
 .sec-b .more { justify-self: start; height: 22px; padding: 0 8px; border: 1px dashed var(--line2); border-radius: var(--r1); background: transparent; color: var(--muted); font-size: 11.5px; cursor: pointer; }
 .sec-b .more:hover { color: var(--text); border-color: var(--accent); }
 
@@ -168,7 +168,8 @@ input[type=range]:focus-visible { outline: none; }
 .band.auto .chip { opacity: .9; }
 .chips { display: flex; flex-wrap: wrap; gap: 4px; align-items: center; min-height: 24px; }
 .chip { display: inline-flex; align-items: center; gap: 5px; height: 24px; padding: 0 3px; border-radius: var(--r1); background: var(--raise); border: 1px solid var(--line2); font-size: 11.5px; color: var(--soft); }
-.chip img, .sw { width: 18px; height: 18px; border-radius: 3px; image-rendering: pixelated; }
+/* block icons: tiles of the texture atlas (32 per row) */
+.tx { --s: 18px; display: inline-block; flex: none; width: var(--s); height: var(--s); border-radius: 3px; background: url(textures/atlas.png) calc(var(--x, 0) * var(--s) * -1) calc(var(--y, 0) * var(--s) * -1) / calc(32 * var(--s)) auto; image-rendering: pixelated; }
 .chip button { width: 18px; height: 18px; padding: 0; border: 0; background: transparent; color: var(--faint); font-size: 13px; line-height: 18px; cursor: pointer; }
 .chip button:hover { color: var(--err); }
 .chips .add { height: 24px; padding: 0 8px; border: 1px dashed var(--line2); border-radius: var(--r1); background: transparent; color: var(--muted); font-size: 11.5px; cursor: pointer; }
@@ -210,7 +211,7 @@ input[type=range]:focus-visible { outline: none; }
 .picker .list { flex: 1; min-height: 0; overflow-y: auto; padding: 6px; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); grid-auto-rows: 30px; gap: 2px; align-content: start; }
 .picker .opt { display: flex; align-items: center; gap: 8px; padding: 4px 6px; border-radius: var(--r1); font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; cursor: pointer; }
 .picker .opt:hover { background: var(--raise); }
-.picker .opt img { width: 20px; height: 20px; flex: none; border-radius: 3px; image-rendering: pixelated; }
+.picker .opt .tx { --s: 20px; }
 .picker .opt.partial { color: var(--muted); }
 .picker .opt.partial::after { content: "partial"; margin-left: auto; padding: 0 4px; border: 1px solid var(--line2); border-radius: 4px; color: var(--faint); font-size: 9.5px; }
 .pk-foot { padding: 6px 12px; border-top: 1px solid var(--line); color: var(--faint); font-size: 11px; }
@@ -268,7 +269,6 @@ input[type=range]:focus-visible { outline: none; }
 .bom-row:hover { background: #ffffff08; }
 .bom-row.on { border-color: var(--accent); background: var(--accentDim); color: var(--text); }
 .bom-row .fill { position: absolute; left: 0; bottom: 0; height: 2px; background: var(--accent); opacity: .55; border-radius: 2px; }
-.bom-row img { width: 18px; height: 18px; border-radius: 3px; image-rendering: pixelated; }
 .bom-row span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .bom-row b { font-weight: 500; font-variant-numeric: tabular-nums; }
 .bom-row em { color: var(--faint); font-style: normal; font-size: 11px; text-align: right; font-variant-numeric: tabular-nums; }
@@ -290,6 +290,7 @@ dialog.wide { width: min(1100px, 94vw); }
 .field-row .field { width: 230px; }
 .check { display: flex; align-items: center; gap: 8px; color: var(--soft); cursor: pointer; }
 .copyrow { display: flex; gap: 6px; }
+.stack { display: grid; gap: 6px; }
 .copyrow .field { flex: 1; }
 .tgt-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: -4px; }
 .targets { display: grid; gap: 6px; max-height: 300px; overflow-y: auto; }
@@ -364,3 +365,25 @@ body.clean .group.joined .btn#reseed { border-radius: var(--r2); }
 #clean.on { color: var(--accent); background: var(--accentDim); }
 body.clean .sec-h .chev { margin-left: auto; }
 .viewbar.bottom .stats { margin-left: auto; }
+
+.startup { position: absolute; inset: 0; display: grid; place-content: center; padding: 32px; background: var(--bg); color: var(--soft); text-align: center; z-index: 70; }
+.startup.failed { color: var(--err); }
+@media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation: none !important; transition: none !important; } }
+.mobile-only, .panel-backdrop { display: none; }
+@media (max-width: 720px) {
+  .mobile-only { display: inline-flex; }
+  .topbar { gap: 6px; padding: 0 8px; }
+  .topbar .brand, .topbar > .group.extra, .topbar > .group.joined, .topbar #preset,
+  .topbar #share, .topbar #clean { display: none; }
+  .topbar .doc { flex: 1; min-width: 0; }
+  .topbar .doc .name { width: 100%; }
+  .layout { display: block; position: relative; }
+  .stage { width: 100%; height: 100%; }
+  .panel { display: none; position: absolute; inset: 0 auto 0 0; width: min(350px, calc(100% - 40px)); z-index: 90; box-shadow: var(--shadow); }
+  body.panel-open .panel { display: flex; }
+  .panel-backdrop { display: block; position: absolute; inset: 0; background: #0008; border: 0; z-index: 80; }
+  .menu .clean-only { display: flex !important; }
+  .menu hr.clean-only { display: block !important; }
+  .viewbar { left: 8px; right: 8px; }
+  .picker { max-width: calc(100vw - 16px); }
+}

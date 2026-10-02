@@ -1,22 +1,78 @@
-name: Tests
+name: Checks
 
 on:
   push:
     branches: [main]
   pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
 
 jobs:
-  test:
+  check:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: 22
-      - uses: actions/setup-python@v5
+          cache: npm
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
         with:
           python-version: '3.12'
-      - name: Check server compiles
-        run: python -m py_compile server.py tools/build_library.py
-      - name: Generator tests
+      - run: npm ci
+      - name: Bundled renderer matches the locked dependency
+        run: npm run vendor && git diff --exit-code web/lib/three.js
+      - name: Lint and type-check
+        run: npm run check
+      - name: Python lint
+        run: pip install ruff==0.16.10 && ruff check
+      - name: Dependency audit
+        run: npm audit --audit-level=moderate
+      - name: Original preview materials are reproducible
+        run: python tools/build_preview.py && git diff --exit-code web/textures/atlas.png
+      - name: Package the portable release
+        run: npm run package
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: mazeforge-release
+          path: dist/*
+          if-no-files-found: error
+
+  test:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 22
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
+        with:
+          python-version: '3.12'
+      - name: Generation and schematic regression tests
         run: npm test
+      - name: Local server and save boundary tests
+        run: npm run test:server
+
+  secrets:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          fetch-depth: 0
+      - name: Install checksum-verified secret scanner
+        env:
+          ARCHIVE: gitleaks_8.30.1_linux_x64.tar.gz
+        run: |
+          curl --fail --silent --show-error --location "https://github.com/gitleaks/gitleaks/releases/download/v8.30.1/$ARCHIVE" --output "$RUNNER_TEMP/$ARCHIVE"
+          echo "551f6fc83ea457d62a0d98237cbad105af8d557003051f41f3e7ca7b3f2470eb  $RUNNER_TEMP/$ARCHIVE" | sha256sum --check
+          tar -xzf "$RUNNER_TEMP/$ARCHIVE" -C "$RUNNER_TEMP" gitleaks
+      - name: Scan commit history and working files
+        run: |
+          "$RUNNER_TEMP/gitleaks" git . --redact --no-banner
+          "$RUNNER_TEMP/gitleaks" dir . --redact --no-banner

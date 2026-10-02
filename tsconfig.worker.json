@@ -1,0 +1,7 @@
+{
+  // The worker runs in a worker scope (self.postMessage with transfers, no DOM)
+  "extends": "./tsconfig.json",
+  "compilerOptions": { "lib": ["es2023", "webworker"], "types": [] },
+  "include": ["web/worker.js"],
+  "exclude": []
+}

@@ -1,80 +1,115 @@
-# Maze Structure Studio
+# MazeForge
 
-Design, preview and export Maze Runner-style concrete walls for Minecraft. Every wall is generated
-from a seed with weathering, rain streaks and ivy, and saved as a WorldEdit schematic (`.schem`)
-ready to paste. Targets Minecraft 1.20.1 with Create.
+**Build atmosphere, one block at a time.**
 
-![Maze Structure Studio](docs/screenshot.png)
+Design weathered walls, junctions and seeded mazes for Minecraft Java Edition.
+Shape the skyline, simulate rain and ivy, preview your structure in 3D, then export
+it as a WorldEdit `.schem` file. Runs locally in your browser, with no account,
+cloud service or telemetry.
 
-## Features
+[Download the latest release](https://github.com/OpenNerdz/mazeforge/releases)
+· [Texture setup](docs/TEXTURES.md)
+· [Report an issue](https://github.com/OpenNerdz/mazeforge/issues)
 
-- **Pieces:** straight walls, corners, T-junctions, crossroads and whole seeded mazes with an optional glade.
-- **Live 3D preview** with real block textures, camera views, shadows and a marker for where to stand when pasting.
-- **Designed faces:** five panel layouts, skyline roughness and slope, broken tops, seam matching so neighbouring
-  walls line up, and per-face overrides.
-- **Weathering:** rain simulated with wind, drying and washing drives the dirt, moss and ivy.
-  Ivy grows on real surfaces, so nothing floats.
-- **Auto palette:** pick any blocks and they are sorted into shade bands and detail roles by their texture colour.
-- **One-click save** into every WorldEdit folder on the PC, on Windows, macOS and Linux. Big designs can be split into chunks.
-- **Seed browser, batch export and share codes:** each code holds a complete design in one short string.
+![MazeForge workspace with a weathered wall in the 3D preview](docs/screenshot.png)
 
-## Quick start
+## Start building
 
-The only requirement is Python 3. The app opens in your browser at <http://127.0.0.1:8765>.
+1. Download the release ZIP and **extract the entire folder**.
+2. Install [Python 3.10 or newer](https://www.python.org/downloads/).
+3. Start the app using the launcher for your system:
 
-| System  | Start |
-|---------|-------|
-| Windows | Double-click `start.bat` (install [Python](https://www.python.org/downloads/) first and tick *Add python.exe to PATH*) |
-| macOS   | Double-click `start.command` |
-| Linux   | Run `./start.sh`, or use the app menu entry |
+| System | Launcher |
+| --- | --- |
+| Windows | Double-click `start.bat`. During Python installation, enable *Add python.exe to PATH*. |
+| macOS | Run `bash start.command` in Terminal from the extracted folder. Double-click also works if the launcher is executable. |
+| Linux | Run `bash start.sh` from the extracted folder. |
 
-In game, stand on the orange paste spot shown in the preview, face north, then run:
+The workspace opens at <http://127.0.0.1:8765>. Use a current Chrome, Edge or Firefox
+browser with WebGL 2 enabled. Node.js and npm are needed only for development.
+If the browser does not open, visit that address manually. To stop the server,
+press **Ctrl+C** in its terminal.
 
-```
+Choose a preset, adjust the settings, then select **Save to Minecraft** or
+**More → Download .schem**. In Minecraft, stand on the orange paste marker shown
+in the preview, face north, and run:
+
+```text
 //schem load studio/<name>
 //paste -a
 ```
 
-## Using the app
+**Compatibility:** Minecraft Java Edition with a matching version of WorldEdit.
+The bundled preview library targets 1.20.1, and all default palettes use vanilla
+blocks. Import your version's client JAR to use its textures and block catalog.
+Export compatibility also depends on the target game's block IDs and states;
+older editions and Bedrock need different formats.
 
-- **Top bar:** design name, presets, undo, *New seed* / *Browse* / *Remix*, *Share*, *Clean* and **Save to Minecraft**.
-- **Left panel:** four tabs, **Shape**, **Detail**, **Weather** and **Blocks**.
-  - The main settings show first. Use *+ N more settings*, or turn on **Advanced settings**, to see the rest.
-  - The search box looks through every tab.
-  - Double-click a slider to reset it. Orange dots mark settings that differ from the defaults.
-- **Details card** (bottom right) shows the paste commands and the block list.
-  - Click a block to see only that block in 3D. Hover for stack counts.
-  - *Copy list* copies the list for survival builds.
-- **Clean UI** (press **C**) hides the less-used controls.
-- The bars adapt to the window size: labels shorten, then hide, so nothing overlaps.
+## What you can make
+
+- Straight walls, corners, T-junctions, crossroads and complete mazes with an optional central glade.
+- Layered concrete panels, towers, passages, broken tops, lettering and per-face layouts.
+- Rain streaks, moss and ivy that follow the surfaces of the structure.
+- Matching seams between neighbouring walls, even with different seeds.
+- Custom palettes, with automatic sorting into shade bands and material roles.
+- Seed variations, batch exports, share codes and large designs split into aligned chunks.
+
+The release includes original preview materials. For authentic Minecraft textures,
+use **More → Minecraft textures → Choose client JAR**. [Texture setup](docs/TEXTURES.md)
+explains where launchers keep these files.
+Imported textures stay on your computer and are excluded from Git and release packages.
+The materials you see in the preview do not change the block IDs exported to Minecraft.
+
+[See a complete maze in the workspace](docs/screenshot-maze.png).
+
+## Your workspace
+
+The top bar contains presets, undo and redo, seed controls, sharing and saving.
+The left panel has **Shape**, **Detail**, **Weather** and **Blocks** tabs. Enable
+**Advanced settings** for fine control, or use the search box to find a setting.
+Double-click a slider to reset it. Orange dots mark changed settings.
+
+The details card shows paste commands and a material list. Select a block to isolate
+it in the preview, or copy the list for a survival build. **Clean UI** hides secondary
+controls. Settings and custom presets are remembered in your browser.
 
 | Key | Action | Key | Action |
-|-----|--------|-----|--------|
+| --- | --- | --- | --- |
 | R | New seed | Ctrl+S | Save to Minecraft |
 | M | Remix | E | Download `.schem` |
 | B | Seed browser | P | Screenshot |
 | C | Clean UI | 1–6 | Camera views |
-| ? | All shortcuts | Ctrl+Z / Ctrl+Shift+Z | Undo / redo |
+| ? | Shortcuts | Ctrl+Z / Ctrl+Shift+Z | Undo / redo |
 
-## Where it saves
+Share links point to the local app address: the recipient must start their own copy
+of MazeForge before opening the link. Existing `MSS1` share codes and saved
+browser settings remain compatible.
 
-*Save to Minecraft* searches the PC each time it opens (↻ searches again). It finds:
+## Saving and privacy
 
-- the official launcher's `.minecraft` folder, including the Microsoft Store launcher
-- instances from Prism, MultiMC and PolyMC (normal, Flatpak and portable installs, including moved instance folders),
-  CurseForge, Modrinth App, ATLauncher, GDLauncher and Technic
-- servers and game folders on the Desktop, in Documents, Downloads and OneDrive, and at the top level of each drive:
-  - Forge and Fabric servers use `config/worldedit/schematics`
-  - Paper and Spigot servers use `plugins/WorldEdit/schematics`
+**Save to Minecraft** shows folders you have added. **Find game folders** checks
+standard launcher locations only when clicked, including the official launcher,
+Prism, MultiMC, PolyMC, CurseForge, Modrinth App, ATLauncher, GDLauncher and Technic.
+It does not search Documents, Desktop or unrelated folders. Portable, moved and
+custom game or server installations can be added using **Browse** or a full path.
+WorldEdit mod and plugin folders are recognized inside the selected installation;
+you can also choose a schematic folder directly.
 
-Instances that already have WorldEdit are listed first. Instances without it are under *more instances*:
-you can save there too, and the file is ready once WorldEdit is added.
+Saving writes only to the folders you select. Existing schematics are preserved unless you enable **Overwrite**. For large designs, enable chunked saving and paste each chunk
+from the same marked position. A copy of successful saves is retained in `exports/`.
+Added folder paths are stored locally in `folders.json`; both are excluded from Git.
 
-To add anything else, paste a folder path or press **Browse**, which opens your system's own folder picker.
-You can add a game or server folder, a whole instances folder (every instance in it is added) or any plain folder.
-Added folders are stored in `folders.json`.
+The server binds to `127.0.0.1`, accepts local host/origin requests, and serves only
+the web directory. No files or settings are uploaded. Keep it running on your own
+computer; it is a desktop companion, not an internet-facing server.
 
-A copy of every save is also kept in `exports/`.
+## Troubleshooting
+
+- **Python not found:** install Python 3.10+ and reopen the terminal. On Windows, rerun the installer with the PATH option enabled.
+- **Blank preview:** enable browser hardware acceleration and WebGL 2, update the browser, and reload. Check that you extracted every file.
+- **Port already in use:** close another copy of the app or the program using port 8765.
+- **Unknown blocks in Minecraft:** import the client JAR for the version you play, and use blocks available in that version.
+- **Folder picker unavailable:** paste the full path instead. Linux native dialogs depend on the desktop's installed portal, Zenity, KDialog or Tk support.
 
 ## How generation works
 
@@ -126,52 +161,58 @@ It can also add a central **Glade** with a gate in each side.
   so moving a rain slider changes only the blocks the water reaches.
 </details>
 
-## Project layout
+## How it's built
 
-```
-server.py           local server: serves the app, finds WorldEdit folders, writes .schem files
-start.sh / .bat / .command   launchers for Linux, Windows and macOS
-web/
-  index.html        UI markup and icon set
-  app.js            UI, settings schema, saving and sharing
-  gen.js            wall generator (footprints, skins, rain, ivy)
-  worker.js         runs the generator off the main thread
-  viewer.js         three.js preview
-  palette.js        auto palette from texture colours
-  schem.js          Sponge schematic v2 reader and writer
-  textures/         block library and textures (built by tools/build_library.py)
-  lib/              three.js (vendored)
-tests/run.mjs       regression tests
-tools/              block library builder
-```
+The app is plain JavaScript modules served as they are: there is no build step, and Python 3 is the only thing needed to run it.
+
+- **Generation runs in a background worker** (`web/worker.js`). The page sends the settings; the worker generates the design,
+  turns it into a mesh and sends both back without copying them. Only the newest settings are ever built: changes made during
+  a build collapse into one follow-up request, so dragging a slider stays smooth.
+- **Meshing** (`web/core/mesh.js`) keeps only block faces that can be seen and merges neighbouring faces with the same texture
+  into one quad (greedy meshing). Each vertex is four 16-bit numbers: position plus texture layer and face direction.
+  The shader works out normals and texture coordinates from those.
+- **Rendering** (`web/ui/viewer.js`, three.js). All block textures come from one atlas and sit in a single texture array,
+  so each of the three passes (opaque, cut-out for leaves, vines and bars, and glass) is a single draw call. Frames are drawn only when
+  something changes, and shadows are redrawn only when the structure or the sun moves.
+- **Determinism**: every random choice comes from the seed, and most come from a fixed roll per block position, so a slider only
+  changes the blocks it affects. The tests fingerprint the exact output of several designs.
 
 ## Development
 
+Requires Node.js 22+ and Python 3.10+. The committed app runs without a build step;
+its bundled three.js renderer is included.
+
 ```sh
-npm test                        # or: node tests/run.mjs
-python3 server.py --no-browser  # start without opening a browser
+npm ci
+npm test                     # generation, schematic round trips, seams, weathering, meshes
+npm run test:server          # local HTTP boundary and saves in disposable directories
+npm run check                # JavaScript lint and type checks
+uvx ruff check               # Python lint (or install Ruff separately)
+python3 tools/build_preview.py  # regenerate original release preview materials
+npm run vendor              # rebuild the renderer after updating three.js
+npm run package             # portable ZIP + SHA256SUMS.txt in dist/
 ```
 
-The tests check:
+The original preview atlas is deterministic. The in-app texture importer reads only the client JAR you select and stores its preview
+in the ignored `web/local-textures/` directory; see [texture setup](docs/TEXTURES.md).
+Never commit or distribute imported game assets. The packaging script uses an explicit
+file allowlist, so personal exports, folder paths, game assets, dependencies and Git
+metadata are excluded even when present in your working folder.
 
-- every preset and piece type, for floating vines, see-through holes and `.schem` round trips
-- the corner geometry
-- that the layouts really differ from each other
-- seam matching and face overrides
-- skyline controls
-- the rain physics
-- that sliders only change the blocks they touch
-- that the same seed always gives the same result
+GitHub Actions runs lint, type checks, generation tests, local server tests on Linux,
+Windows and macOS, a dependency audit, preview reproducibility, packaging, and secret scans.
+See [CONTRIBUTING.md](CONTRIBUTING.md) for contribution guidance and
+[SECURITY.md](SECURITY.md) for reporting security issues.
 
-GitHub Actions runs them on every push.
+## License and credits
 
-To rebuild the block library after updating Minecraft or Create, run `python3 tools/build_library.py`.
-It reads the client jar and resolves each block's models and textures the same way the game does.
+MazeForge code, branding and original preview materials are licensed under the
+[MIT License](LICENSE). The renderer includes three.js under its own MIT license;
+see [third-party notices](THIRD_PARTY_NOTICES.md).
 
-The server listens only on `127.0.0.1` and answers only the studio page itself.
-It writes only `.schem` files, and only into the folders it lists.
+Minecraft names identify the compatible game. Locally imported
+assets remain the property of their respective owners and are outside this project's
+license. Refer to the [Minecraft usage guidelines](https://www.minecraft.net/en-us/usage-guidelines)
+when using game assets.
 
-## Notes
-
-This repository includes Minecraft and Create textures for the preview. They belong to Mojang and the Create team,
-so keep the repository private.
+**NOT AN OFFICIAL MINECRAFT PRODUCT. NOT APPROVED BY OR ASSOCIATED WITH MOJANG OR MICROSOFT.**

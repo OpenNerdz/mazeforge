@@ -1,10 +1,22 @@
 #!/usr/bin/env python3
-"""Maze Structure Studio — local server.
+"""MazeForge — local server.
 
 Serves the web app and saves generated .schem files straight into the
 WorldEdit schematics folders it finds on this PC. Only listens on 127.0.0.1.
 """
-import base64, glob, json, mimetypes, os, re, subprocess, sys, threading, urllib.request, webbrowser
+import base64
+import contextlib
+import glob
+import json
+import mimetypes
+import os
+import re
+import subprocess
+import sys
+import tempfile
+import threading
+import urllib.request
+import webbrowser
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
@@ -13,6 +25,7 @@ WEB = APP / 'web'
 EXPORTS = APP / 'exports'
 HOME = Path.home()
 PORT = 8765
+DISCOVERED = []
 SAFE = re.compile(r'^[A-Za-z0-9_\-]{0,60}$')
 mimetypes.add_type('text/javascript', '.js')
 mimetypes.add_type('application/json', '.json')
@@ -38,22 +51,12 @@ def data_dirs():
     xdg = os.environ.get('XDG_DATA_HOME')
     out = [Path(xdg) if xdg else HOME / '.local/share', HOME / '.config']
     # Flatpak installs keep their data in a sandbox
-    for app in gl(HOME, '.var/app/*'):
-        out += [Path(app) / 'data', Path(app) / 'config', Path(app) / '.local/share']
+    for app_id in ('org.prismlauncher.PrismLauncher', 'org.polymc.PolyMC', 'org.multimc.MultiMC',
+                   'com.modrinth.ModrinthApp', 'com.modrinth.theseus', 'com.atlauncher.ATLauncher', 'io.gdevs.GDLauncher'):
+        app = HOME / '.var/app' / app_id
+        if app.is_dir():
+            out += [app / 'data', app / 'config', app / '.local/share']
     return out
-
-
-def user_dirs():
-    """Desktop / Documents / Downloads (incl. OneDrive-redirected ones on Windows)."""
-    names = ['Desktop', 'Documents', 'Downloads', 'Games']
-    out = [HOME / n for n in names]
-    if IS_WIN:
-        for od in gl(HOME, 'OneDrive*'):
-            out += [Path(od) / n for n in names]
-        # portable launchers are often dropped in C:\Games, C:\MultiMC, D:\Minecraft ...
-        for drive in 'CDEFG':
-            out.append(Path(f'{drive}:/'))
-    return [d for d in out if d.is_dir()]
 
 
 def gl(base, pat):
@@ -106,17 +109,6 @@ def launcher_roots():
     # CurseForge keeps instances in the user folder
     for d in [HOME / 'curseforge/minecraft/Instances', HOME / 'Documents/Curse/Minecraft/Instances']:
         roots.append(('CurseForge', d, '*'))
-    for d in user_dirs():
-        for od in gl(d, 'curseforge/minecraft/Instances'):
-            roots.append(('CurseForge', Path(od), '*'))
-    # portable Prism / MultiMC / PolyMC installs (a folder with its .cfg next to instances/)
-    for d in user_dirs():
-        for pat in ('*/', '*/*/'):
-            for cfg in ('prismlauncher.cfg', 'multimc.cfg', 'polymc.cfg'):
-                for hit in gl(d, pat + cfg):
-                    home = Path(hit).parent
-                    inst = cfg_value(hit, 'InstanceDir') or 'instances'
-                    roots.append(('Prism' if cfg.startswith('prism') else 'MultiMC', home / inst, '*'))
     return roots
 
 
@@ -150,10 +142,8 @@ def schem_folders(g):
             out.append((g / 'plugins' / plug / 'schematics', True))
     has = (g / 'config/worldedit').is_dir()
     if not has and (g / 'mods').is_dir():
-        try:
+        with contextlib.suppress(OSError):
             has = any(re.search(r'worldedit|fawe', f.name, re.I) for f in (g / 'mods').iterdir())
-        except OSError:
-            pass
     if has or not out:
         out.append((g / 'config/worldedit/schematics', has))
     return out
@@ -170,8 +160,8 @@ def save_custom(paths):
     CUSTOM_FILE.write_text(json.dumps(sorted(set(paths)), indent=1))
 
 
-def find_targets():
-    out, seen = [], set()
+def find_targets(discover=False):
+    out, seen = [dict(t) for t in DISCOVERED], {t['path'] for t in DISCOVERED}
 
     def add(g, label, kind, custom=None):
         try:
@@ -189,31 +179,22 @@ def find_targets():
             out.append({'path': str(sch), 'label': label, 'kind': kind, 'worldedit': has, 'custom': custom,
                         'default': has and 'maze' in label.lower()})
 
-    # vanilla launcher (also used by the Microsoft Store / Xbox app launcher)
-    for base in data_dirs():
-        for name in ('.minecraft', 'minecraft'):
-            if (base / name).is_dir() and looks_like_game(base / name):
-                add(base / name, 'Minecraft', 'Official launcher')
-    if not IS_WIN and not IS_MAC and (HOME / '.minecraft').is_dir():
-        add(HOME / '.minecraft', 'Minecraft', 'Official launcher')
+    if discover:
+        # vanilla launcher (also used by the Microsoft Store / Xbox app launcher)
+        for base in data_dirs():
+            for name in ('.minecraft', 'minecraft'):
+                if (base / name).is_dir() and looks_like_game(base / name):
+                    add(base / name, 'Minecraft', 'Official launcher')
+        if not IS_WIN and not IS_MAC and (HOME / '.minecraft').is_dir():
+            add(HOME / '.minecraft', 'Minecraft', 'Official launcher')
 
-    for label, root, pat in launcher_roots():
-        for inst in gl(root, pat):
-            inst = Path(inst)
-            if inst.is_dir() and looks_like_game(game_dir(inst)):
-                add(game_dir(inst), instance_name(inst), label)
+        for label, root, pat in launcher_roots():
+            for inst in gl(root, pat):
+                inst = Path(inst)
+                if inst.is_dir() and looks_like_game(game_dir(inst)):
+                    add(game_dir(inst), instance_name(inst), label)
 
-    # loose game / server folders on the desktop, in documents etc.
-    for d in user_dirs():
-        if len(d.parts) == 1 or d.anchor == str(d):   # drive roots: only one level deep
-            pats = ['*/server.properties', '*/*/config/worldedit']
-        else:
-            pats = ['*/server.properties', '*/*/server.properties', '*/config/worldedit', '*/*/config/worldedit']
-        for pat in pats:
-            for hit in gl(d, pat):
-                h = Path(hit)
-                g = h.parent if h.name == 'server.properties' else h.parent.parent
-                add(g, g.name, 'Server' if (g / 'server.properties').exists() else 'Game folder')
+        DISCOVERED[:] = [dict(t) for t in out]
 
     # folders the user added by hand
     for c in load_custom():
@@ -268,7 +249,9 @@ class Handler(SimpleHTTPRequestHandler):
             sys.stderr.write('[studio] ' + (fmt % args) + '\n')
 
     def end_headers(self):
-        self.send_header('Cache-Control', 'no-store')
+        self.send_header('Cache-Control', 'no-cache')           # always revalidated, so updates show at once
+        self.send_header('X-Content-Type-Options', 'nosniff')
+        self.send_header('Referrer-Policy', 'no-referrer')
         super().end_headers()
 
     def _json(self, code, obj):
@@ -280,33 +263,46 @@ class Handler(SimpleHTTPRequestHandler):
         self.wfile.write(body)
 
     def do_GET(self):
-        if self.path.startswith('/api/') and self.path != '/api/ping' and not local_request(self):
+        if not local_request(self):
             return self._json(403, {'error': 'forbidden'})
         if self.path == '/api/ping':
-            return self._json(200, {'ok': True, 'app': 'maze-structure-studio'})
-        if self.path == '/api/targets':
-            return self._json(200, {'targets': find_targets()})
+            return self._json(200, {'ok': True, 'app': 'mazeforge'})
+        if self.path == '/api/assets':
+            local = all((WEB / 'local-textures' / f).is_file() for f in ('atlas.png', 'library.json'))
+            return self._json(200, {'local': local})
+        if self.path in ('/api/targets', '/api/targets?discover=1'):
+            return self._json(200, {'targets': find_targets(discover=self.path.endswith('?discover=1'))})
+        if not Path(self.translate_path(self.path)).resolve().is_relative_to(WEB.resolve()):
+            return self._json(403, {'error': 'forbidden'})
         return super().do_GET()
 
     def do_POST(self):
-        if self.path not in ('/api/save', '/api/folders', '/api/pick'):
+        if self.path not in ('/api/save', '/api/folders', '/api/pick', '/api/textures'):
             return self._json(404, {'error': 'not found'})
         # JSON only: a cross-site page can't send that without a CORS preflight, which we never answer
         if not local_request(self) or not (self.headers.get('Content-Type') or '').startswith('application/json'):
             return self._json(403, {'error': 'forbidden'})
         try:
             n = int(self.headers.get('Content-Length', 0))
+            if n < 0:
+                return self._json(400, {'error': 'invalid content length'})
             if n > 64 * 1024 * 1024:
                 return self._json(413, {'error': 'too large'})
             req = json.loads(self.rfile.read(n) or b'{}')
+            if not isinstance(req, dict):
+                return self._json(400, {'error': 'expected a JSON object'})
+            if self.path == '/api/textures':
+                return self._textures(req)
             if self.path == '/api/pick':
                 return self._json(200, {'path': pick_folder()})
             if self.path == '/api/folders':
                 return self._folders(req)
             name, sub = req.get('name', ''), req.get('subfolder', '')
-            if not name or not SAFE.match(name) or not SAFE.match(sub):
+            if not isinstance(name, str) or not isinstance(sub, str) or not name or not SAFE.fullmatch(name) or not SAFE.fullmatch(sub):
                 return self._json(400, {'error': 'invalid file or folder name'})
-            data = base64.b64decode(req['data'])
+            if not isinstance(req.get('targets'), list) or not all(isinstance(t, str) for t in req['targets']):
+                return self._json(400, {'error': 'expected a list of target folders'})
+            data = base64.b64decode(req['data'], validate=True)
             if data[:2] != b'\x1f\x8b':
                 return self._json(400, {'error': 'not a gzip schematic'})
             allowed = {t['path'] for t in find_targets()}
@@ -318,13 +314,20 @@ class Handler(SimpleHTTPRequestHandler):
                 folder = Path(t) / sub if sub else Path(t)
                 dest = folder / f'{name}.schem'
                 try:
+                    if not dest.resolve().is_relative_to(Path(t).resolve()):
+                        results.append({'path': str(dest), 'ok': False, 'error': 'path leaves the selected folder'})
+                        continue
                     if dest.exists() and not req.get('overwrite'):
                         results.append({'path': str(dest), 'ok': False, 'error': f'{name}.schem already exists (tick Overwrite)'})
                         continue
                     folder.mkdir(parents=True, exist_ok=True)
-                    tmp = dest.with_suffix('.schem.tmp')
-                    tmp.write_bytes(data)
-                    os.replace(tmp, dest)
+                    with tempfile.NamedTemporaryFile(dir=folder, suffix='.schem.tmp', delete=False) as f:
+                        tmp = Path(f.name)
+                        f.write(data)
+                    try:
+                        os.replace(tmp, dest)
+                    finally:
+                        tmp.unlink(missing_ok=True)
                     results.append({'path': str(dest), 'ok': True})
                 except OSError as e:
                     results.append({'path': str(dest), 'ok': False, 'error': str(e)})
@@ -333,8 +336,50 @@ class Handler(SimpleHTTPRequestHandler):
                 EXPORTS.mkdir(exist_ok=True)
                 (EXPORTS / f'{name}.schem').write_bytes(data)
             return self._json(200, {'results': results})
+        except (ValueError, TypeError, KeyError):
+            return self._json(400, {'error': 'invalid request data'})
         except Exception as e:  # noqa: BLE001
             return self._json(500, {'error': str(e)})
+
+    def _textures(self, req):
+        local = WEB / 'local-textures'
+        if local.is_symlink():
+            return self._json(400, {'error': 'local texture folder must be inside the app'})
+        if req.get('reset') is True:
+            for name in ('atlas.png', 'library.json', 'metadata.json'):
+                (local / name).unlink(missing_ok=True)
+            return self._json(200, {'ok': True})
+        library, metadata = req.get('library'), req.get('metadata')
+        if not isinstance(library, dict) or not 1 <= len(library) <= 10000 or not isinstance(metadata, dict):
+            return self._json(400, {'error': 'invalid texture library'})
+        if not isinstance(metadata.get('dataVersion'), int) or not 1952 <= metadata['dataVersion'] <= 100000:
+            return self._json(400, {'error': 'unsupported game version'})
+        if not isinstance(metadata.get('version'), str) or len(metadata['version']) > 60:
+            return self._json(400, {'error': 'invalid game version'})
+        for key, entry in library.items():
+            if not re.fullmatch(r'[a-z0-9_]{1,100}', key) or key in ('__proto__', 'constructor', 'prototype'):
+                return self._json(400, {'error': 'invalid block name'})
+            if not isinstance(entry, dict) or entry.get('id') != f'minecraft:{key}' or not re.fullmatch(r'#[0-9a-fA-F]{6}', str(entry.get('color'))):
+                return self._json(400, {'error': 'invalid block metadata'})
+            tiles = entry.get('faces', [entry.get('icon')])
+            if not isinstance(tiles, list) or not 1 <= len(tiles) <= 6 or not all(isinstance(t, int) and 0 <= t < 4096 for t in tiles):
+                return self._json(400, {'error': 'invalid texture index'})
+        atlas = base64.b64decode(req.get('atlas', ''), validate=True)
+        if len(atlas) < 24 or atlas[:8] != b'\x89PNG\r\n\x1a\n' or int.from_bytes(atlas[16:20], 'big') != 512:
+            return self._json(400, {'error': 'invalid preview atlas'})
+        height = int.from_bytes(atlas[20:24], 'big')
+        if not 16 <= height <= 2048 or height % 16:
+            return self._json(400, {'error': 'invalid preview dimensions'})
+        local.mkdir(exist_ok=True)
+        # Write only these three fixed files, never archive paths or user-provided names.
+        with tempfile.TemporaryDirectory(dir=WEB) as staging:
+            stage = Path(staging)
+            (stage / 'atlas.png').write_bytes(atlas)
+            (stage / 'library.json').write_text(json.dumps(library, separators=(',', ':')))
+            (stage / 'metadata.json').write_text(json.dumps(metadata))
+            for name in ('atlas.png', 'library.json', 'metadata.json'):
+                os.replace(stage / name, local / name)
+        return self._json(200, {'ok': True})
 
     def _folders(self, req):
         paths = load_custom()
@@ -394,7 +439,7 @@ def pick_folder():
                   ['kdialog', '--getexistingdirectory', str(HOME)], [sys.executable, '-c', TK_PICK]]
     for cmd in tries:
         try:
-            r = subprocess.run(cmd, capture_output=True, text=True, timeout=600)
+            r = subprocess.run(cmd, capture_output=True, text=True, timeout=600, check=False)
         except (OSError, subprocess.TimeoutExpired):
             continue
         if r.returncode == 0:
@@ -407,7 +452,7 @@ def pick_folder():
 def already_running():
     try:
         with urllib.request.urlopen(f'http://127.0.0.1:{PORT}/api/ping', timeout=1) as r:
-            return json.loads(r.read()).get('app') == 'maze-structure-studio'
+            return json.loads(r.read()).get('app') == 'mazeforge'
     except Exception:  # noqa: BLE001
         return False
 
@@ -421,13 +466,11 @@ def main():
             webbrowser.open(url)
         return
     srv = ThreadingHTTPServer(('127.0.0.1', PORT), Handler)
-    print('Maze Structure Studio running at', url, '(Ctrl+C to stop)')
+    print('MazeForge running at', url, '(Ctrl+C to stop)')
     if open_browser:
         threading.Timer(0.6, lambda: webbrowser.open(url)).start()
-    try:
+    with contextlib.suppress(KeyboardInterrupt):
         srv.serve_forever()
-    except KeyboardInterrupt:
-        pass
 
 
 if __name__ == '__main__':

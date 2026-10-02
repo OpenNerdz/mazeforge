@@ -1,26 +1,54 @@
-// Regression tests for the generator. Run with:  node tests/run.mjs
-// Checks every preset and piece type for floating vines, see-through holes and .schem roundtrips,
-// and checks that the rain simulation is physical (wind side gets wetter) and local (sliders only
-// change the blocks they touch).
-import { generate, DEFAULTS, PRESETS, PIECES } from '../web/gen.js';
-import { effectivePalette } from '../web/palette.js';
-import { writeSchem, readSchem } from '../web/schem.js';
-import fs from 'fs';
+// Regression tests. Run with:  npm test   (or node tests/run.mjs; add --update to accept new output fingerprints)
+// Checks every preset and piece type for floating vines and carpets, see-through holes and .schem roundtrips, that the rain
+// simulation is physical (wind side gets wetter) and local (sliders only change the blocks they touch), that the
+// generator's output is unchanged (fingerprints), and that meshes draw exactly the visible block faces.
+import { createHash } from 'node:crypto';
+import fs from 'node:fs';
+import { generate } from '../web/core/generate.js';
+import { DEFAULTS, PRESETS } from '../web/core/settings.js';
+import { PIECES } from '../web/core/pieces.js';
+import { effectivePalette } from '../web/core/palette.js';
+import { writeSchem, readSchem, stateString } from '../web/core/schem.js';
+import { zipReader } from '../web/core/texture-import.js';
+import { buildMesh, UNIT, FACE } from '../web/core/mesh.js';
+import { withDefaults } from '../web/ui/state.js';
 
-const lib = JSON.parse(fs.readFileSync(new URL('../web/textures/library.json', import.meta.url)));
+const lib = JSON.parse(fs.readFileSync(new URL('../web/textures/library.json', import.meta.url), 'utf8'));
 const fails = [];
 const check = (ok, msg) => { if (!ok) fails.push(msg); return ok; };
 const params = extra => { const P = { ...structuredClone(DEFAULTS), ...structuredClone(extra) }; P.palette = effectivePalette(P, lib).palette; return P; };
 const soft = k => k.includes('|') || k.endsWith('_leaves') || k === 'moss_carpet';
 const OFF = { n: [0, -1], s: [0, 1], e: [1, 0], w: [-1, 0] };
 
+// Imported settings respect the same bounds as the UI and keep supported presets intact.
+{
+  const bad = withDefaults({ width: 1e9, heightMax: Infinity, layout: 'unknown',
+    palette: { deep: '<invalid>', bands: [[]] }, autoBlocks: ['stone', null], faceOverrides: { '0': { layout: 'towers', seed: 2 } } });
+  check(bad.width === 96 && bad.heightMax === DEFAULTS.heightMax && bad.layout === DEFAULTS.layout, 'invalid imported dimensions/layout must be bounded');
+  check(bad.palette.deep === DEFAULTS.palette.deep && bad.palette.bands[0].length > 0 && bad.autoBlocks.length === 1, 'invalid imported palettes must keep safe defaults');
+  check(bad.faceOverrides[0].layout === 'towers', 'valid face overrides must survive importing');
+  for (const [name, preset] of Object.entries(PRESETS)) {
+    const loaded = withDefaults(preset);
+    check(Object.entries(preset).every(([k, v]) => JSON.stringify(loaded[k]) === JSON.stringify(v)), `${name}: preset import changed settings`);
+  }
+  const oldLeaves = { oak_leaves: { id: 'minecraft:oak_leaves', properties: { distance: ['7'], persistent: ['true', 'false'] } } };
+  check(stateString('oak_leaves', oldLeaves) === 'minecraft:oak_leaves[distance=7,persistent=true]', 'older leaf states must omit unsupported waterlogged property');
+  try { zipReader(new ArrayBuffer(10)); check(false, 'invalid JAR must be rejected'); } catch { /* expected */ }
+  const versioned = { ...lib };
+  Object.defineProperty(versioned, 'dataVersion', { value: 3955 });
+  const sample = { W: 1, H: 1, D: 1, keys: ['air', 'stone'], data: new Uint16Array([1]) };
+  const decoded = await readSchem((await writeSchem(sample, versioned)).buffer);
+  check(decoded.dataVersion === 3955, 'schematic must use the imported Minecraft data version');
+}
+
 async function inspect(name, P) {
   const t0 = performance.now(); const g = generate(P); const ms = performance.now() - t0;
   const { W, H, D, data, keys } = g, at = (x, y, z) => (y * D + z) * W + x;
   const solid = (x, y, z) => x >= 0 && y >= 0 && z >= 0 && x < W && y < H && z < D && data[at(x, y, z)] && !soft(keys[data[at(x, y, z)]]);
-  let floating = 0, holes = 0;
+  let floating = 0, holes = 0, carpets = 0;
   for (let y = 0; y < H; y++) for (let z = 0; z < D; z++) for (let x = 0; x < W; x++) {
     const k = keys[data[at(x, y, z)]];
+    if (k === 'moss_carpet' && !solid(x, y - 1, z)) carpets++;
     if (!k.startsWith('vine|')) continue;
     const held = [...k.split('|')[1]].some(c => solid(x + OFF[c][0], y, z + OFF[c][1])) || (y + 1 < H && keys[data[at(x, y + 1, z)]].startsWith('vine|'));
     if (!held) floating++;
@@ -32,7 +60,7 @@ async function inspect(name, P) {
   const back = await readSchem((await writeSchem(g, lib)).buffer);
   let same = back.W === W && back.H === H && back.D === D;
   for (let i = 0; i < data.length && same; i++) same = back.keys[back.data[i]] === keys[data[i]];
-  const ok = check(!floating, `${name}: ${floating} floating vines`) & check(!holes, `${name}: ${holes} see-through holes`) & check(same, `${name}: schem roundtrip mismatch`);
+  const ok = check(!floating, `${name}: ${floating} floating vines`) & check(!carpets, `${name}: ${carpets} moss carpets not on a solid block`) & check(!holes, `${name}: ${holes} see-through holes`) & check(same, `${name}: schem roundtrip mismatch`);
   console.log(`${ok ? 'ok  ' : 'FAIL'} ${name.padEnd(34)} ${W}x${H}x${D} ${ms.toFixed(0).padStart(4)}ms`);
   return g;
 }
@@ -112,6 +140,78 @@ console.log('ok   slider locality checked');
 // ---- determinism: same parameters, same blocks
 { const g1 = generate(params({ seed: 9 })), g2 = generate(params({ seed: 9 }));
   check(g1.data.every((v, i) => g1.keys[v] === g2.keys[g2.data[i]]), 'generate() is not deterministic'); }
+
+// ---- fingerprints: the exact blocks of a few designs (a deliberate change to the generator needs --update)
+{
+  const file = new URL('fingerprints.json', import.meta.url), known = fs.existsSync(file) ? JSON.parse(fs.readFileSync(file, 'utf8')) : {};
+  const cases = { straight: {}, wide: { width: 96 }, corner: { piece: 'corner', width: 30 }, cross: { piece: 'cross', width: 56 },
+    maze: PRESETS['Maze with Glade'], overgrown: PRESETS['Overgrown wall'], ruined: PRESETS['Ruined low wall'],
+    features: { portholes: 2, grilles: 3, hazards: 1, channels: 2, doorways: 1, windows: 2, numberText: '7', layout: 'slab' } };
+  const now = {};
+  for (const [name, extra] of Object.entries(cases)) {
+    const g = generate(params(extra));
+    now[name] = createHash('sha1').update(Buffer.from(g.data.buffer, g.data.byteOffset, g.data.byteLength)).update(JSON.stringify([g.keys, g.W, g.H, g.D])).digest('hex').slice(0, 16);
+    if (!process.argv.includes('--update')) check(known[name] === now[name], `fingerprint changed: ${name} (run with --update if intended)`);
+  }
+  if (process.argv.includes('--update')) fs.writeFileSync(file, JSON.stringify(now, null, 2) + '\n');
+  console.log('ok   fingerprints checked');
+}
+
+// ---- meshes: every quad, split back into unit faces, must be exactly the set of visible cube faces
+{
+  const faceKey = (x, y, z, f) => `${x},${y},${z},${f}`;
+  const e = k => lib[k.split('|')[0]], cube = k => k !== 'air' && !k.includes('|') && (!e(k) || !['box', 'cross'].includes(e(k).shape));
+  // the faces a mesh draws: unit faces of every quad of the cube passes, keyed by the block in front of which they sit
+  const drawn = (mesh, g) => {
+    const out = new Map();
+    mesh.parts.forEach(v => {
+      if (!v) return;
+      for (let q = 0; q < v.length; q += 24) {
+        const w = v[q + 3], f = Math.floor(w / FACE), layer = w - f * FACE; if (f > 5) continue;
+        const d = f >> 1, pts = [0, 4, 8, 20].map(o => [v[q + o], v[q + o + 1], v[q + o + 2]]);
+        const lo = [0, 1, 2].map(a => Math.min(...pts.map(p => p[a]))), hi = [0, 1, 2].map(a => Math.max(...pts.map(p => p[a])));
+        if (lo.some(c => c % UNIT) || hi.some(c => c % UNIT)) continue;                // not a whole-block face (slabs, bars, vines)
+        const plane = lo[d] / UNIT, cell = f & 1 ? plane : plane - 1, u = (d + 1) % 3, vv = (d + 2) % 3;
+        for (let a = lo[u] / UNIT; a < hi[u] / UNIT; a++) for (let b = lo[vv] / UNIT; b < hi[vv] / UNIT; b++) {
+          const c = [0, 0, 0]; c[d] = cell; c[u] = a; c[vv] = b;
+          if (!cube(g.keys[g.data[(c[1] * g.D + c[2]) * g.W + c[0]]])) continue;             // a slab's or carpet's own face
+          const k = faceKey(c[0], c[1], c[2], f); check(!out.has(k), `face drawn twice: ${k}`); out.set(k, mesh.tiles[layer]);
+        }
+      }
+    });
+    return out;
+  };
+  const expected = g => {
+    const out = new Map(), at = (x, y, z) => (y * g.D + z) * g.W + x;
+    const occ = (x, y, z) => { if (x < 0 || y < 0 || z < 0 || x >= g.W || y >= g.H || z >= g.D) return false; const k = g.keys[g.data[at(x, y, z)]]; return k !== 'air' && !k.includes('|') && (e(k)?.full ?? true); };
+    const N = [[1, 0, 0], [-1, 0, 0], [0, 1, 0], [0, -1, 0], [0, 0, 1], [0, 0, -1]];
+    for (let y = 0; y < g.H; y++) for (let z = 0; z < g.D; z++) for (let x = 0; x < g.W; x++) {
+      const k = g.keys[g.data[at(x, y, z)]]; if (!cube(k)) continue;
+      N.forEach(([dx, dy, dz], f) => {
+        const nk = g.keys[g.data[at(x + dx, y + dy, z + dz)]] ?? 'air', inside = x + dx >= 0 && y + dy >= 0 && z + dz >= 0 && x + dx < g.W && y + dy < g.H && z + dz < g.D;
+        if (occ(x + dx, y + dy, z + dz) || (inside && nk === k && e(k)?.alpha === 'blend')) return;
+        out.set(faceKey(x, y, z, f), e(k) ? (e(k).faces || [])[f] ?? e(k).icon : null);
+      });
+    }
+    return out;
+  };
+  const same = (g, label) => {
+    const got = drawn(buildMesh([g], lib), g), want = expected(g);
+    let missing = 0, extra = 0, wrongTex = 0;
+    for (const [k, t] of want) { if (!got.has(k)) missing++; else if (t !== null && got.get(k) !== t) wrongTex++; }
+    for (const k of got.keys()) if (!want.has(k)) extra++;
+    check(!missing && !extra && !wrongTex, `${label}: ${missing} faces missing, ${extra} extra, ${wrongTex} with the wrong texture`);
+  };
+  const grid = (W, H, D, keys, fill) => { const data = new Uint16Array(W * H * D); for (let y = 0; y < H; y++) for (let z = 0; z < D; z++) for (let x = 0; x < W; x++) data[(y * D + z) * W + x] = fill(x, y, z); return { W, H, D, data, keys }; };
+  const quads = g => buildMesh([g], lib).parts.reduce((a, v) => a + (v ? v.length / 24 : 0), 0);
+  check(quads(grid(3, 3, 3, ['air', 'stone'], () => 1)) === 6, 'a solid 3×3×3 of one block should be 6 quads');
+  check(quads(grid(2, 1, 1, ['air', 'stone', 'andesite'], x => x + 1)) === 10, 'two different blocks side by side should be 10 quads');
+  same(grid(4, 3, 3, ['air', 'stone', 'glass', 'oak_leaves', 'oak_log', 'mod_block'], (x, y, z) => (x + y * 2 + z) % 6), 'mixed blocks');
+  for (const name of ['Classic wall', 'Overgrown corner', 'Maze with Glade', 'Vent wall']) same(generate(params(PRESETS[name])), name);
+  const only = buildMesh([generate(params({}))], lib, { only: 'mossy_stone_bricks' });
+  check(only.tiles.length === 1 && only.tiles[0] === lib.mossy_stone_bricks.icon, 'isolating a block should mesh only that block');
+  console.log('ok   meshes checked');
+}
 
 if (fails.length) { console.log(`\n${fails.length} problem(s):\n  ` + fails.join('\n  ')); process.exit(1); }
 console.log('\nall tests passed');
