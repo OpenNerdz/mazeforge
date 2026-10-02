@@ -2,6 +2,8 @@
 
 > **Beta software — bugs are expected.** Features and compatibility are still being tested. Back up your Minecraft world before pasting structures, and [report bugs](https://github.com/OpenNerdz/mazeforge/issues).
 
+**[Download MazeForge Beta — Windows, macOS and Linux](https://github.com/OpenNerdz/mazeforge/releases/tag/v2.0.1-beta.1)**
+
 **Build atmosphere, one block at a time.**
 
 Design weathered walls, junctions and seeded mazes for Minecraft Java Edition.
@@ -9,7 +11,7 @@ Shape the skyline, simulate rain and ivy, preview your structure in 3D, then exp
 it as a WorldEdit `.schem` file. Runs locally in your browser, with no account,
 cloud service or telemetry.
 
-[Download the latest release](https://github.com/OpenNerdz/mazeforge/releases)
+[All releases](https://github.com/OpenNerdz/mazeforge/releases)
 · [Texture setup](docs/TEXTURES.md)
 · [Report an issue](https://github.com/OpenNerdz/mazeforge/issues)
 
