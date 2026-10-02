@@ -1,6 +1,10 @@
 # MazeForge
 
-**[Download the latest release — Windows, macOS and Linux](https://github.com/OpenNerdz/mazeforge/releases/latest)**
+[![Download latest release](https://img.shields.io/badge/Download-Latest%20release-238636?style=for-the-badge)](https://github.com/OpenNerdz/mazeforge/releases/latest)
+
+[![Checks](https://github.com/OpenNerdz/mazeforge/actions/workflows/test.yml/badge.svg)](https://github.com/OpenNerdz/mazeforge/actions/workflows/test.yml)
+[![Desktop builds](https://github.com/OpenNerdz/mazeforge/actions/workflows/desktop.yml/badge.svg)](https://github.com/OpenNerdz/mazeforge/actions/workflows/desktop.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
 Design weathered walls and seeded mazes for Minecraft Java Edition. Preview in 3D
 and export WorldEdit schematics. Runs locally in your browser; no account or Python
