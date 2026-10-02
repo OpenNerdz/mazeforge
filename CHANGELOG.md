@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+- Feature the current beta in GitHub’s Latest release slot and use a lasting download link.
+- Validate desktop builds on pull requests and check for dependency updates weekly.
+- Document release verification and publishing.
+
 ## 2.0.1-beta.1
 
 - Standalone Windows, macOS (Apple Silicon and Intel) and Linux downloads with Python bundled.
@@ -25,5 +31,5 @@ First public beta release, under the name **MazeForge**. Bugs are expected while
 ## Earlier development
 
 Previous commits document the private development of the generator and interface.
-The first public release preserves those code changes while removing game texture
-images and automated co-author trailers from the published history.
+Public packages include original preview artwork; locally imported game textures
+are excluded from distribution.

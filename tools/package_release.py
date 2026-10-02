@@ -8,7 +8,8 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 FILES = ('README.md', 'LICENSE', 'THIRD_PARTY_NOTICES.md', 'SECURITY.md', 'CHANGELOG.md',
          'server.py', 'start.sh', 'start.command', 'start.bat',
-         'docs/TEXTURES.md', 'docs/screenshot.png', 'docs/screenshot-maze.png')
+         'CONTRIBUTING.md', 'docs/RELEASING.md', 'docs/TEXTURES.md',
+         'docs/screenshot.png', 'docs/screenshot-maze.png')
 
 
 def release_files():

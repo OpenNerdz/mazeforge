@@ -1,8 +1,12 @@
 # MazeForge
 
+[![Checks](https://github.com/OpenNerdz/mazeforge/actions/workflows/test.yml/badge.svg)](https://github.com/OpenNerdz/mazeforge/actions/workflows/test.yml)
+[![Desktop builds](https://github.com/OpenNerdz/mazeforge/actions/workflows/desktop.yml/badge.svg)](https://github.com/OpenNerdz/mazeforge/actions/workflows/desktop.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+
 > **Beta software — bugs are expected.** Features and compatibility are still being tested. Back up your Minecraft world before pasting structures, and [report bugs](https://github.com/OpenNerdz/mazeforge/issues).
 
-**[Download MazeForge Beta — Windows, macOS and Linux](https://github.com/OpenNerdz/mazeforge/releases/tag/v2.0.1-beta.1)**
+**[Download MazeForge Beta — Windows, macOS and Linux](https://github.com/OpenNerdz/mazeforge/releases/latest)**
 
 **Build atmosphere, one block at a time.**
 
@@ -239,7 +243,8 @@ metadata are excluded even when present in your working folder.
 
 GitHub Actions runs lint, type checks, generation tests, local server tests on Linux,
 Windows and macOS, a dependency audit, preview reproducibility, packaging, and secret scans.
-See [CONTRIBUTING.md](CONTRIBUTING.md) for contribution guidance and
+See [the release guide](docs/RELEASING.md) for packaging and publishing,
+[CONTRIBUTING.md](CONTRIBUTING.md) for contribution guidance and
 [SECURITY.md](SECURITY.md) for reporting security issues.
 
 ## License and credits
