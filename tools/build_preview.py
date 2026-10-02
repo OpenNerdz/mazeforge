@@ -15,8 +15,17 @@ def png(width, height, pixels):
     def chunk(kind, data):
         return struct.pack('!I', len(data)) + kind + data + struct.pack('!I', zlib.crc32(kind + data))
     rows = b''.join(b'\0' + pixels[y * width * 4:(y + 1) * width * 4] for y in range(height))
+    # Stored DEFLATE blocks keep the output identical across zlib implementations.
+    # The release ZIP compresses the atlas along with the rest of the application.
+    encoded = bytearray(b'\x78\x01')
+    for offset in range(0, len(rows), 65535):
+        block = rows[offset:offset + 65535]
+        encoded.append(int(offset + len(block) == len(rows)))
+        encoded.extend(struct.pack('<HH', len(block), len(block) ^ 0xffff))
+        encoded.extend(block)
+    encoded.extend(struct.pack('!I', zlib.adler32(rows)))
     return (b'\x89PNG\r\n\x1a\n' + chunk(b'IHDR', struct.pack('!2I5B', width, height, 8, 6, 0, 0, 0))
-            + chunk(b'IDAT', zlib.compress(rows, 9)) + chunk(b'IEND', b''))
+            + chunk(b'IDAT', encoded) + chunk(b'IEND', b''))
 
 
 def material(key, entry):
