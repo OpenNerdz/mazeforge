@@ -21,7 +21,9 @@ export function raise(el) {
 }
 
 export function toast(msg, kind = '') {
-  const box = $('#toasts'), t = document.createElement('div'); t.className = 'toast ' + kind; t.textContent = msg; box.appendChild(t);
+  const box = $('#toasts');
+  if ([...box.children].some(c => c.textContent === msg)) return;      // the same message is already showing
+  const t = document.createElement('div'); t.className = 'toast ' + kind; t.textContent = msg; box.appendChild(t);
   raise(box);
   setTimeout(() => { t.style.transition = 'opacity .3s'; t.style.opacity = '0'; setTimeout(() => t.remove(), 300); }, kind === 'err' ? 6000 : 3200);
 }

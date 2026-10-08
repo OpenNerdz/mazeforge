@@ -4,8 +4,15 @@ import { buildFootprint } from './footprint.js';
 import { applyIvy } from './ivy.js';
 import { rotateGrid, composeGrids } from './grid.js';
 
+// ~18 bytes per cell while building: past this a browser tab runs out of memory instead of failing clearly
+const MAX_CELLS = 48e6;
+
 export function generate(P) {
-  const g = buildFootprint(P, pieceMask(P));
+  const mask = pieceMask(P);
+  if (mask.W * mask.D * (P.heightMax + 2) > MAX_CELLS) {
+    throw new Error(`a ${mask.W} × ${P.heightMax} × ${mask.D} design is too large to build. Use fewer or narrower maze cells, or a lower height.`);
+  }
+  const g = buildFootprint(P, mask);
   if (P.ivy) applyIvy(g, P);
   return g;
 }

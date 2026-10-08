@@ -17,7 +17,7 @@ let shown = null;                                                    // grids of
 self.onmessage = async ({ data: msg }) => {
   try {
     const lib = await library;
-    if (msg.P) msg.P = { ...msg.P, palette: effectivePalette(msg.P, lib).palette };  // settings as the generator wants them
+    if (msg.P) msg.P = { ...msg.P, palette: effectivePalette(msg.P, lib).palette, mossCarpet: !!lib.moss_carpet };  // as the generator wants them
     if (msg.type === 'scene') {
       const t0 = performance.now(), scene = buildScene(msg.P, msg.tiles), t1 = performance.now();
       shown = scene.shown;

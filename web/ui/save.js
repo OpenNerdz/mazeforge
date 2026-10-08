@@ -8,9 +8,13 @@ async function api(path, body) {
   const j = await r.json(); if (!r.ok) throw new Error(j.error || r.statusText); return j;
 }
 
+// file names are cut at 60 characters: leave room for the "_r12c12" suffix, or long names' chunks would collide
+const chunkBase = name => safeName(name).slice(0, 52);
+
 // big designs split into chunks; every chunk keeps its place relative to the same standing spot,
 // so pasting them all from the orange marker rebuilds the whole thing
 function chunks(g, size, name) {
+  name = chunkBase(name);
   const out = [], nx = Math.ceil(g.W / size), nz = Math.ceil(g.D / size);
   for (let cz = 0; cz < nz; cz++) for (let cx = 0; cx < nx; cx++) {
     const x0 = cx * size, z0 = cz * size, W = Math.min(size, g.W - x0), D = Math.min(size, g.D - z0), H = g.H;
@@ -62,7 +66,7 @@ export function createSaving(app) {
     $('#chunkRow').classList.toggle('hidden', !g);
     if (g && Math.max(g.W, g.D) > 64 && !$('#chunked').dataset.touched) $('#chunked').checked = true;
     $('#loadHint').textContent = $('#chunked').checked && g
-      ? `${chunks(g, chunkSize(), name).length} files: ${pre}${name}_r1c1 … — stand on the marker, then for each: //schem load <file> and //paste -a (same spot every time)`
+      ? `${chunks(g, chunkSize(), name).length} files: ${pre}${chunkBase(name)}_r1c1 … — stand on the marker, then for each: //schem load <file> and //paste -a (same spot every time)`
       : `//schem load ${pre}${name} then //paste -a`;
   }
 
@@ -77,11 +81,16 @@ export function createSaving(app) {
     e.preventDefault(); const keep = new Set(chosen());
     try { targets = (await api('/api/folders', { remove: b.dataset.rm })).targets; renderTargets(keep); } catch (err) { toast(err.message, 'err'); }
   });
+  // an opened .schem is for looking at: writing it back out would lose block states, modded ids and block entities
+  const viewingOnly = () => {
+    if (app.viewing) toast('This is a preview of an opened file — choose Back to designer to save your design', 'err');
+    return app.viewing;
+  };
   $('#export').onclick = async () => {
-    if (!app.current) return;
+    if (!app.current || viewingOnly()) return;
     const name = safeName(P().name); download(await writeSchem(app.current, library), name + '.schem'); toast(`Downloaded ${name}.schem`, 'ok');
   };
-  $('#save').onclick = async () => { await loadTargets(); $('#subfolder').value = LS.get('subfolder', 'studio'); updateHint(); $('#dlgSave').showModal(); };
+  $('#save').onclick = async () => { if (viewingOnly()) return; await loadTargets(); $('#subfolder').value = LS.get('subfolder', 'studio'); updateHint(); $('#dlgSave').showModal(); };
   $('#saveDownload').onclick = () => { $('#dlgSave').close(); $('#export').click(); };
   $('#subfolder').oninput = updateHint; $('#chunkSize').oninput = updateHint;
   $('#chunked').onchange = () => { $('#chunked').dataset.touched = 1; updateHint(); };

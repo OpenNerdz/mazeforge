@@ -12,6 +12,8 @@ from unittest.mock import patch
 import server
 from tools.build_preview import png
 
+find_targets = server.find_targets          # the real one: setUp replaces it with a fixed list
+
 
 class ServerTests(unittest.TestCase):
     def setUp(self):
@@ -76,6 +78,8 @@ class ServerTests(unittest.TestCase):
         self.assertEqual(self.request('GET', '/', headers={'Host': 'example.invalid'})[0], 403)
         self.assertEqual(self.request('POST', '/api/save', self.save_body(), {'Content-Type': 'text/plain'})[0], 403)
         self.assertEqual(self.request('POST', '/api/unknown', {})[0], 404)
+        self.assertEqual(self.request('HEAD', '/', headers={'Host': 'example.invalid'})[0], 403)
+        self.assertEqual(self.request('GET', '/missing.js')[0], 404)     # logging an error must not drop the reply
 
     def test_invalid_payloads(self):
         for body in [[], self.save_body(name='wall\n'), self.save_body(name='../wall'),
@@ -98,6 +102,35 @@ class ServerTests(unittest.TestCase):
         self.assertTrue(json.loads(self.request('POST', '/api/save', self.save_body(overwrite=True))[1])['results'][0]['ok'])
         result = json.loads(self.request('POST', '/api/save', self.save_body(targets=[str(self.root)]))[1])
         self.assertFalse(result['results'][0]['ok'])
+
+    def test_a_folder_listed_twice_is_written_once(self):
+        result = json.loads(self.request('POST', '/api/save', self.save_body(targets=[str(self.target)] * 2))[1])['results']
+        self.assertEqual([r['ok'] for r in result], [True])
+
+    def test_unreadable_folders_do_not_break_the_list(self):
+        readable, locked = self.root / 'readable', self.root / 'locked'
+        readable.mkdir()
+        locked.mkdir()
+        (self.root / 'folders.json').write_text(json.dumps([str(readable), str(locked)]))
+        is_dir = Path.is_dir
+
+        def guarded(path):
+            if path == locked:
+                raise PermissionError(13, 'Permission denied', str(path))
+            return is_dir(path)
+        with patch.object(Path, 'is_dir', guarded):
+            targets = find_targets()
+        self.assertIn(str(readable.resolve()), [t['path'] for t in targets])
+        self.assertTrue(next(t for t in targets if t['path'] == str(locked))['missing'])
+
+    def test_rescans_do_not_duplicate_folders_on_case_insensitive_systems(self):
+        game = self.root / 'Data/.minecraft'
+        (game / 'saves').mkdir(parents=True)
+        with patch.object(server, 'data_dirs', return_value=[self.root / 'Data']), patch.object(server, 'HOME', self.root), \
+                patch.object(server, 'DISCOVERED', []), patch.object(server.os.path, 'normcase', str.lower):
+            find_targets(discover=True)
+            labels = [t['label'] for t in find_targets(discover=True)]
+        self.assertEqual(labels.count('Minecraft'), 1)
 
     def test_symlinks_stay_inside_the_selected_folder(self):
         outside = self.root / 'outside'

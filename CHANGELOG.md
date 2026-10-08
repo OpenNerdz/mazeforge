@@ -15,6 +15,14 @@
 - Tiles is disabled for pieces it does not affect; switching tabs scrolls to the top; empty searches say so.
 - Higher-contrast help text, named dialogs and icon buttons, and toggle states for screen readers.
 - Startup builds the first design once instead of twice.
+- Designs too large for a browser tab stop with a clear message instead of running out of memory.
+- A damaged .schem file is rejected at once instead of freezing the page; an opened file is preview-only, since
+  writing it back would lose block states, modded blocks and block entities.
+- Moss carpet is left out for game versions before 1.17, which do not have it.
+- Long design names no longer give chunked saves colliding file names.
+- Local server: an unreadable folder no longer breaks folder discovery or saving; Find game folders no longer
+  lists Windows folders twice; missing files get a 404 instead of a dropped connection; HEAD requests get the
+  same host check as GET; failed writes leave no temporary files; a folder listed twice is written once.
 
 ## 2.0.1-beta.1
 

@@ -92,6 +92,8 @@ export async function writeSchem(grid, library, offset = [0, 0, -grid.D]) {
 function readNBT(bytes) {
   const dv = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength); let p = 0;
   const td = new TextDecoder();
+  // a length read from the file: never negative (that would loop back over the same bytes for ever) or past the end
+  const count = size => { const n = dv.getInt32(p); p += 4; if (n < 0 || p + n * size > bytes.length) throw new RangeError('bad length'); return n; };
   const str = () => { const n = dv.getUint16(p); p += 2; const s = td.decode(bytes.subarray(p, p + n)); p += n; return s; };
   const pay = t => {
     switch (t) {
@@ -101,19 +103,20 @@ function readNBT(bytes) {
       case 4: { const v = dv.getBigInt64(p); p += 8; return v; }
       case 5: { const v = dv.getFloat32(p); p += 4; return v; }
       case 6: { const v = dv.getFloat64(p); p += 8; return v; }
-      case 7: { const n = dv.getInt32(p); p += 4; const v = bytes.subarray(p, p + n); p += n; return v; }
+      case 7: { const n = count(1); const v = bytes.subarray(p, p + n); p += n; return v; }
       case 8: return str();
-      case 9: { const et = dv.getInt8(p++); const n = dv.getInt32(p); p += 4; const a = []; for (let i = 0; i < n; i++) a.push(pay(et)); return a; }
+      case 9: { const et = dv.getInt8(p++); const n = count(1); const a = []; for (let i = 0; i < n; i++) a.push(pay(et)); return a; }
       case 10: { const o = {}; for (let tt = dv.getInt8(p++); tt; tt = dv.getInt8(p++)) o[str()] = pay(tt); return o; }
-      case 11: { const n = dv.getInt32(p); p += 4; const a = new Int32Array(n); for (let i = 0; i < n; i++) { a[i] = dv.getInt32(p); p += 4; } return a; }
-      case 12: { const n = dv.getInt32(p); p += 4; const a = []; for (let i = 0; i < n; i++) { a.push(dv.getBigInt64(p)); p += 8; } return a; }
+      case 11: { const n = count(4); const a = new Int32Array(n); for (let i = 0; i < n; i++) { a[i] = dv.getInt32(p); p += 4; } return a; }
+      case 12: { const n = count(8); const a = []; for (let i = 0; i < n; i++) { a.push(dv.getBigInt64(p)); p += 8; } return a; }
     }
   };
   const t = dv.getInt8(p++); str(); return pay(t);
 }
 
 export async function readSchem(buf) {
-  let root = readNBT(await gunzip(new Uint8Array(buf)));
+  let root;
+  try { root = readNBT(await gunzip(new Uint8Array(buf))); } catch { throw new Error('The file is damaged or is not a schematic'); }
   if (root.Schematic) root = root.Schematic;               // v3 wraps everything
   const W = root.Width, H = root.Height, D = root.Length;
   const pal = root.Palette ?? root.Blocks?.Palette, bd = root.BlockData ?? root.Blocks?.Data;

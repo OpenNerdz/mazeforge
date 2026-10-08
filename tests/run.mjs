@@ -39,6 +39,17 @@ const OFF = { n: [0, -1], s: [0, 1], e: [1, 0], w: [-1, 0] };
   const sample = { W: 1, H: 1, D: 1, keys: ['air', 'stone'], data: new Uint16Array([1]) };
   const decoded = await readSchem((await writeSchem(sample, versioned)).buffer);
   check(decoded.dataVersion === 3955, 'schematic must use the imported Minecraft data version');
+  // a negative byte-array length once sent the reader back over the same bytes for ever
+  const looping = new Uint8Array([10, 0, 0, 7, 0, 0, 0xff, 0xff, 0xff, 0xf9, 0, 0]);
+  check(await readSchem(looping.buffer).then(() => false, () => true), 'a damaged schematic must be rejected, not read for ever');
+  let tooBig = false;
+  try { generate(params({ piece: 'maze', mazeCols: 16, mazeRows: 16, mazeCorridor: 30, mazeWall: 30, heightMax: 200 })); } catch { tooBig = true; }
+  check(tooBig, 'a design too large for a browser tab must fail with a message');
+  // games before 1.17 have no moss carpet: the same ivy, without carpets
+  const P = params({ ...PRESETS['Overgrown wall'], seed: 2 }), withCarpet = generate(P), without = generate({ ...P, mossCarpet: false });
+  const carpet = withCarpet.keys.indexOf('moss_carpet');
+  check(carpet > 0 && !without.keys.includes('moss_carpet') && withCarpet.data.every((v, i) => v === carpet ? !without.data[i] : without.keys[without.data[i]] === withCarpet.keys[v]),
+    'without moss carpet, only the carpets may differ');
 }
 
 async function inspect(name, P) {

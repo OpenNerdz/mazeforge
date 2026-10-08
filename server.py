@@ -74,7 +74,7 @@ def data_dirs():
     for app_id in ('org.prismlauncher.PrismLauncher', 'org.polymc.PolyMC', 'org.multimc.MultiMC',
                    'com.modrinth.ModrinthApp', 'com.modrinth.theseus', 'com.atlauncher.ATLauncher', 'io.gdevs.GDLauncher'):
         app = HOME / '.var/app' / app_id
-        if app.is_dir():
+        if is_dir(app):
             out += [app / 'data', app / 'config', app / '.local/share']
     return out
 
@@ -118,7 +118,7 @@ def launcher_roots():
     for base in data_dirs():
         for folder, label, pat in LAUNCHERS:
             d = base / folder
-            if d.is_dir():
+            if is_dir(d):
                 roots.append((label, d, pat))
                 # Prism / MultiMC / PolyMC let you move the instances folder
                 for cfg in ('prismlauncher.cfg', 'multimc.cfg', 'polymc.cfg'):
@@ -135,7 +135,7 @@ def launcher_roots():
 def game_dir(inst):
     """An instance folder -> the folder the game actually runs in."""
     for sub in ('minecraft', '.minecraft'):
-        if (inst / sub).is_dir():
+        if is_dir(inst / sub):
             return inst / sub
     return inst
 
@@ -150,18 +150,29 @@ def instance_name(inst):
     return n or inst.name
 
 
+def is_dir(p):
+    """Path.is_dir that treats an unreadable folder as missing instead of raising (Python 3.12+ raises)."""
+    try:
+        return p.is_dir()
+    except OSError:
+        return False
+
+
 def looks_like_game(d):
-    return any((d / s).exists() for s in ('mods', 'config', 'saves', 'options.txt', 'server.properties', 'plugins'))
+    try:
+        return any((d / s).exists() for s in ('mods', 'config', 'saves', 'options.txt', 'server.properties', 'plugins'))
+    except OSError:
+        return False
 
 
 def schem_folders(g):
     """Where WorldEdit reads schematics from in game folder g: [(path, has_worldedit)]."""
     out = []
     for plug in ('WorldEdit', 'FastAsyncWorldEdit'):          # Bukkit / Paper / Spigot servers
-        if (g / 'plugins' / plug).is_dir():
+        if is_dir(g / 'plugins' / plug):
             out.append((g / 'plugins' / plug / 'schematics', True))
-    has = (g / 'config/worldedit').is_dir()
-    if not has and (g / 'mods').is_dir():
+    has = is_dir(g / 'config/worldedit')
+    if not has and is_dir(g / 'mods'):
         with contextlib.suppress(OSError):
             has = any(re.search(r'worldedit|fawe', f.name, re.I) for f in (g / 'mods').iterdir())
     if has or not out:
@@ -181,7 +192,7 @@ def save_custom(paths):
 
 
 def find_targets(discover=False):
-    out, seen = [dict(t) for t in DISCOVERED], {t['path'] for t in DISCOVERED}
+    out, seen = [dict(t) for t in DISCOVERED], {os.path.normcase(t['path']) for t in DISCOVERED}
 
     def add(g, label, kind, custom=None):
         try:
@@ -203,15 +214,15 @@ def find_targets(discover=False):
         # vanilla launcher (also used by the Microsoft Store / Xbox app launcher)
         for base in data_dirs():
             for name in ('.minecraft', 'minecraft'):
-                if (base / name).is_dir() and looks_like_game(base / name):
+                if is_dir(base / name) and looks_like_game(base / name):
                     add(base / name, 'Minecraft', 'Official launcher')
-        if not IS_WIN and not IS_MAC and (HOME / '.minecraft').is_dir():
+        if not IS_WIN and not IS_MAC and is_dir(HOME / '.minecraft'):
             add(HOME / '.minecraft', 'Minecraft', 'Official launcher')
 
         for label, root, pat in launcher_roots():
             for inst in gl(root, pat):
                 inst = Path(inst)
-                if inst.is_dir() and looks_like_game(game_dir(inst)):
+                if is_dir(inst) and looks_like_game(game_dir(inst)):
                     add(game_dir(inst), instance_name(inst), label)
 
         DISCOVERED[:] = [dict(t) for t in out]
@@ -219,7 +230,7 @@ def find_targets(discover=False):
     # folders the user added by hand
     for c in load_custom():
         p = Path(c)
-        if not p.is_dir():
+        if not is_dir(p):
             out.append({'path': c, 'label': p.name or c, 'kind': 'Added folder — not found', 'worldedit': False,
                         'custom': c, 'missing': True, 'default': False})
             continue
@@ -265,7 +276,7 @@ class Handler(SimpleHTTPRequestHandler):
         super().__init__(*a, directory=str(WEB), **k)
 
     def log_message(self, fmt, *args):
-        if sys.stderr and '/api/' in (args[0] if args else ''):
+        if sys.stderr and args and isinstance(args[0], str) and '/api/' in args[0]:
             sys.stderr.write('[studio] ' + (fmt % args) + '\n')
 
     def end_headers(self):
@@ -311,6 +322,13 @@ class Handler(SimpleHTTPRequestHandler):
             return self._json(403, {'error': 'forbidden'})
         return super().do_GET()
 
+    def do_HEAD(self):
+        if not local_request(self):
+            self.send_response(403)
+            self.end_headers()
+            return None
+        return super().do_HEAD()
+
     def do_POST(self):
         if self.path not in ('/api/save', '/api/folders', '/api/pick', '/api/textures', '/api/quit'):
             return self._json(404, {'error': 'not found'})
@@ -348,7 +366,7 @@ class Handler(SimpleHTTPRequestHandler):
                 return self._json(400, {'error': 'not a gzip schematic'})
             allowed = {t['path'] for t in find_targets()}
             results = []
-            for t in req.get('targets', []):
+            for t in dict.fromkeys(req['targets']):
                 if t not in allowed:
                     results.append({'path': t, 'ok': False, 'error': 'folder not allowed'})
                     continue
@@ -364,8 +382,8 @@ class Handler(SimpleHTTPRequestHandler):
                     folder.mkdir(parents=True, exist_ok=True)
                     with tempfile.NamedTemporaryFile(dir=folder, suffix='.schem.tmp', delete=False) as f:
                         tmp = Path(f.name)
-                        f.write(data)
                     try:
+                        tmp.write_bytes(data)
                         os.replace(tmp, dest)
                     finally:
                         tmp.unlink(missing_ok=True)
@@ -374,8 +392,9 @@ class Handler(SimpleHTTPRequestHandler):
                     results.append({'path': str(dest), 'ok': False, 'error': str(e)})
             # keep a copy in the studio's own exports folder whenever a save went through
             if any(r['ok'] for r in results):
-                EXPORTS.mkdir(exist_ok=True)
-                (EXPORTS / f'{name}.schem').write_bytes(data)
+                with contextlib.suppress(OSError):
+                    EXPORTS.mkdir(exist_ok=True)
+                    (EXPORTS / f'{name}.schem').write_bytes(data)
             return self._json(200, {'results': results})
         except (ValueError, TypeError, KeyError):
             return self._json(400, {'error': 'invalid request data'})
@@ -428,7 +447,7 @@ class Handler(SimpleHTTPRequestHandler):
             p = Path(os.path.expandvars(os.path.expanduser(str(req['add']).strip().strip('"'))))
             if not p.is_absolute():
                 return self._json(400, {'error': 'use a full path, e.g. ' + (r'C:\Users\you\AppData\Roaming\.minecraft' if IS_WIN else '~/.minecraft')})
-            if not p.is_dir():
+            if not is_dir(p):
                 return self._json(400, {'error': f'folder not found: {p}'})
             before = {t['path'] for t in find_targets()}
             save_custom(paths + [str(p.resolve())])

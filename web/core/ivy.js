@@ -160,7 +160,8 @@ export function applyIvy(g, P) {
   for (const [k, b] of leaves) if (!data[k]) data[k] = kid(b);
   for (const k of carpets) {
     const x = k % W, z = Math.floor(k / W) % D, y = Math.floor(k / (W * D));
-    if (inb(x, y, z) && !data[k] && solid(x, y - 1, z) && R.f() < 0.7) data[k] = kid('moss_carpet');
+    // the roll is taken either way, so games without moss carpet (before 1.17) get the same ivy, just no carpets
+    if (inb(x, y, z) && !data[k] && solid(x, y - 1, z) && R.f() < 0.7 && P.mossCarpet !== false) data[k] = kid('moss_carpet');
   }
   return g;
 }
