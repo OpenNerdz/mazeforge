@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 2.0.1-beta.2
 
 - Feature the current beta in GitHub’s Latest release slot and use a lasting download link.
 - Validate desktop builds on pull requests and group routine dependency updates into monthly batches.
@@ -23,6 +23,7 @@
 - Local server: an unreadable folder no longer breaks folder discovery or saving; Find game folders no longer
   lists Windows folders twice; missing files get a 404 instead of a dropped connection; HEAD requests get the
   same host check as GET; failed writes leave no temporary files; a folder listed twice is written once.
+- Designs build 15–50% faster and their 3D preview meshes about 30% faster, with identical output.
 
 ## 2.0.1-beta.1
 
