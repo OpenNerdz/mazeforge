@@ -41,10 +41,11 @@ export function paint(W, H, D, occ, P, faceFn) {
   const water = simulateWater(W, H, D, occ, P, new Rng(P.seed * 53 + 11));
   const roof = makeTop(W, D, P, P.seed * 17 + 5), k = P.streakStrength;
   const { keys, id } = keyTable(), data = new Uint16Array(W * H * D), dirt = new Float32Array(W * H * D);
-  const o = { n: false, s: false, e: false, w: false, u: false, d: false };           // which sides are open (reused)
-  for (let y = 0; y < H; y++) for (let z = 0; z < D; z++) for (let x = 0; x < W; x++) {
-    const i = at(x, y, z); if (!occ[i]) continue;
-    o.n = !solid(x, y, z - 1); o.s = !solid(x, y, z + 1); o.e = !solid(x + 1, y, z); o.w = !solid(x - 1, y, z); o.u = !solid(x, y + 1, z); o.d = !solid(x, y - 1, z);
+  const o = { n: false, s: false, e: false, w: false, u: false, d: false }, layer = W * D;   // which sides are open (reused)
+  for (let y = 0, i = 0; y < H; y++) for (let z = 0; z < D; z++) for (let x = 0; x < W; x++, i++) {
+    if (!occ[i]) continue;
+    o.n = !(z > 0 && occ[i - W] === 1); o.s = !(z < D - 1 && occ[i + W] === 1); o.e = !(x < W - 1 && occ[i + 1] === 1);
+    o.w = !(x > 0 && occ[i - 1] === 1); o.u = !(y < H - 1 && occ[i + layer] === 1); o.d = !(y > 0 && occ[i - layer] === 1);
     const side = o.n || o.s || o.e || o.w;
     let b;
     if (!side && !o.u && !o.d) b = P.palette.interior;
@@ -57,5 +58,5 @@ export function paint(W, H, D, occ, P, faceFn) {
     }
     data[i] = id(b);
   }
-  return { data, keys, id, dirt, at };
+  return { data, keys, id, dirt };
 }

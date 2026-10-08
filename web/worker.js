@@ -7,7 +7,7 @@
 //   { type: 'thumb', P, top }         -> { thumb: { w, h, pixels } }
 import { loadLibrary } from './core/assets.js';
 import { buildScene, generate } from './core/generate.js';
-import { effectivePalette } from './core/palette.js';
+import { effectivePalette, hexRgb } from './core/palette.js';
 import { buildMesh } from './core/mesh.js';
 import { blockCounts } from './core/grid.js';
 
@@ -48,7 +48,7 @@ const meshBuffers = mesh => [...mesh.parts.filter(Boolean).map(p => p.buffer), m
 
 // a quick 2D preview: walls seen from the front, mazes and junctions from above; nearer = brighter
 function thumbnail({ W, H, D, data, keys }, lib, top) {
-  const rgb = keys.map(k => { const h = lib[k.split('|')[0]]?.color || '#888888'; return [1, 3, 5].map(i => parseInt(h.slice(i, i + 2), 16)); });
+  const rgb = keys.map(k => hexRgb(lib[k.split('|')[0]]?.color || '#888888'));
   const at = (x, y, z) => (y * D + z) * W + x, w = W, h = top ? D : H, pixels = new Uint8ClampedArray(w * h * 4);
   for (let u = 0; u < w; u++) for (let v = 0; v < h; v++) {
     let c = [18, 20, 22], shade = 1;

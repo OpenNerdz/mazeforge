@@ -1,5 +1,5 @@
 // Default settings, the default palette and the built-in presets.
-export const DEFAULT_PALETTE = {
+const DEFAULT_PALETTE = {
   bands: [
     ['smooth_stone'], ['smooth_stone', 'andesite'], ['andesite', 'polished_andesite'], ['polished_andesite', 'stone'],
     ['stone', 'stone_bricks'], ['stone_bricks', 'cracked_stone_bricks', 'cobblestone'], ['cracked_stone_bricks', 'cobblestone'],

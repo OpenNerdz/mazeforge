@@ -141,13 +141,12 @@ export class Skin {
   // depth offset, its own tier heights (so joints never run the whole width) and its own skyline.
   massing(x0, x1, y, crownY, o = {}) {
     const P = this.P, R = this.R, bw = Math.max(8, P.bayWidth ?? 20);
-    const bays = [], gaps = [];
-    for (const [a, b] of [[x0, x1]]) {
-      const wid = b - a;
-      if (wid < bw * 1.4) { bays.push([a, b]); continue; }
+    const bays = [], gaps = [], wid = x1 - x0;
+    if (wid < bw * 1.4) bays.push([x0, x1]);
+    else {
       const n = Math.max(2, Math.round(wid / (bw * R.uniform(0.75, 1.25))));
       const ws = splitWidth(wid, n, R, Math.max(P.minSlab + 2, Math.round(bw * 0.45)));
-      let xx = a;
+      let xx = x0;
       ws.forEach((w, i) => { bays.push([xx, xx + w]); xx += w; if (i < ws.length - 1) { gaps.push(xx); xx++; } });
     }
     const multi = bays.length > 1, shifts = [];
@@ -173,7 +172,7 @@ export class Skin {
     const ws = splitWidth(x1 - x0, this.slabCount(x1 - x0), R, P.minSlab);
     let xx = x0; const tops = [], fs = [];
     for (const w of ws) {
-      const top = R.int(o.topMin ?? P.heightMin, o.topMax ?? P.heightMax);
+      const top = R.int(P.heightMin, P.heightMax);
       tops.push(top);
       if (top - y > P.tierMax + 4) {                                   // tall: stack real tiers up to this slab's top
         const first = this.monos.length;
@@ -481,7 +480,7 @@ export class Skin {
     return b;
   }
 }
-export const BANDS = [0.10, 0.18, 0.26, 0.34, 0.44, 0.54, 0.66, 0.80, 99];
+const BANDS = [0.10, 0.18, 0.26, 0.34, 0.44, 0.54, 0.66, 0.80, 99];
 // pick a block for darkness v from the palette's shade bands; pick = patch noise so neighbours match
 export function shadeBlock(pal, v, pick, jitter) {
   let band = BANDS.length - 1;

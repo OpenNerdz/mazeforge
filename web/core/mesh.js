@@ -40,21 +40,20 @@ function describe(key, library, tiles) {
 
 // growable int16 vertex buffer for one pass: plain triangles, two per quad
 class Part {
-  constructor() { this.v = new Int16Array(6144); this.n = 0; }
+  constructor() { this.v = new Int16Array(6144); this.n = 0; this.corners = [[0, 0, 0], [0, 0, 0], [0, 0, 0], [0, 0, 0]]; }
   // four corners [x, y, z], counter-clockwise seen from the front
   face(a, b, c, d, layer, face) {
     const w = layer + FACE * face;
     if (this.n + 24 > this.v.length) { const g = new Int16Array(this.v.length * 2); g.set(this.v); this.v = g; }
-    let n = this.n;
-    for (const p of [a, b, c, a, c, d]) { this.v[n] = p[0]; this.v[n + 1] = p[1]; this.v[n + 2] = p[2]; this.v[n + 3] = w; n += 4; }
-    this.n = n;
+    this.vert(a, w); this.vert(b, w); this.vert(c, w); this.vert(a, w); this.vert(c, w); this.vert(d, w);
   }
+  vert(p, w) { const v = this.v, n = this.n; v[n] = p[0]; v[n + 1] = p[1]; v[n + 2] = p[2]; v[n + 3] = w; this.n = n + 4; }
   // an axis-aligned quad on plane `at` of axis d, spanning [u0, u1) × [v0, v1) of the other two axes; neg: facing -d
   quad(d, at, u0, u1, v0, v1, neg, layer) {
-    const u = (d + 1) % 3, v = 3 - d - u;
-    const P = (a, b) => { const c = [0, 0, 0]; c[d] = at; c[u] = a; c[v] = b; return c; };
-    if (neg) this.face(P(u0, v0), P(u0, v1), P(u1, v1), P(u1, v0), layer, d * 2 + 1);
-    else this.face(P(u0, v0), P(u1, v0), P(u1, v1), P(u0, v1), layer, d * 2);
+    const u = (d + 1) % 3, v = 3 - d - u, c = this.corners;                       // reused: no garbage per quad
+    const P = (k, a, b) => { const p = c[k]; p[d] = at; p[u] = a; p[v] = b; return p; };
+    if (neg) this.face(P(0, u0, v0), P(1, u0, v1), P(2, u1, v1), P(3, u1, v0), layer, d * 2 + 1);
+    else this.face(P(0, u0, v0), P(1, u1, v0), P(2, u1, v1), P(3, u0, v1), layer, d * 2);
   }
   done() { return this.n ? this.v.slice(0, this.n) : null; }
 }
@@ -92,34 +91,34 @@ function meshGrid({ W, H, D, data, keys }, ox, parts, layerOf, describeKey) {
   });
   const dims = [W, H, D], stride = [1, D * W, W], U = UNIT;                        // index = x + y*D*W + z*W
 
-  // ---- cubes: greedy quads, one axis and direction at a time
+  // ---- cubes: greedy quads, one axis at a time; one pass over a slice finds its faces both ways
+  const o = [ox * U, 0, 0];
   for (let d = 0; d < 3; d++) {
     const u = (d + 1) % 3, v = (d + 2) % 3, nu = dims[u], nv = dims[v], sd = stride[d], su = stride[u], sv = stride[v];
-    const mask = new Int32Array(nu * nv);
-    for (let s = 0; s < dims[d]; s++) for (let neg = 0; neg < 2; neg++) {
-      const f = d * 2 + neg, step = neg ? -sd : sd, edge = neg ? s === 0 : s === dims[d] - 1;
-      let any = false;
-      for (let j = 0, m = 0; j < nv; j++) for (let i = 0; i < nu; i++, m++) {
-        const k = s * sd + j * sv + i * su, a = data[k], c = cube[a];
-        let val = 0;
-        if (c) {
-          const b = edge ? 0 : data[k + step];
-          if (!occ[b] && !(a === b && blend[a])) { val = (c << 16) | (face[a * 6 + f] + 1); any = true; }
-        }
-        mask[m] = val;
+    const masks = [new Int32Array(nu * nv), new Int32Array(nu * nv)], [m0, m1] = masks;          // faces towards +d, -d
+    for (let s = 0; s < dims[d]; s++) {
+      const f = d * 2, last = s === dims[d] - 1, any = [false, false];
+      for (let j = 0, m = 0; j < nv; j++) for (let i = 0, k = s * sd + j * sv; i < nu; i++, m++, k += su) {
+        const a = data[k], c = cube[a];
+        m0[m] = m1[m] = 0;
+        if (!c) continue;
+        const b0 = last ? 0 : data[k + sd], b1 = s === 0 ? 0 : data[k - sd];
+        if (!occ[b0] && !(a === b0 && blend[a])) { m0[m] = (c << 16) | (face[a * 6 + f] + 1); any[0] = true; }
+        if (!occ[b1] && !(a === b1 && blend[a])) { m1[m] = (c << 16) | (face[a * 6 + f + 1] + 1); any[1] = true; }
       }
-      if (!any) continue;
-      const at = (neg ? s : s + 1) * U;
-      for (let j = 0; j < nv; j++) for (let i = 0; i < nu;) {
-        const val = mask[i + j * nu];
-        if (!val) { i++; continue; }
-        let w = 1; while (i + w < nu && mask[i + w + j * nu] === val) w++;
-        let h = 1;
-        grow: for (; j + h < nv; h++) for (let q = 0; q < w; q++) if (mask[i + q + (j + h) * nu] !== val) break grow;
-        for (let r = 0; r < h; r++) mask.fill(0, i + (j + r) * nu, i + w + (j + r) * nu);
-        const o = [ox * U, 0, 0];
-        parts[(val >> 16) - 1].quad(d, at + o[d], i * U + o[u], (i + w) * U + o[u], j * U + o[v], (j + h) * U + o[v], neg, (val & 0xffff) - 1);
-        i += w;
+      for (let neg = 0; neg < 2; neg++) {
+        if (!any[neg]) continue;
+        const mask = masks[neg], at = (neg ? s : s + 1) * U;
+        for (let j = 0; j < nv; j++) for (let i = 0; i < nu;) {
+          const val = mask[i + j * nu];
+          if (!val) { i++; continue; }
+          let w = 1; while (i + w < nu && mask[i + w + j * nu] === val) w++;
+          let h = 1;
+          grow: for (; j + h < nv; h++) for (let q = 0; q < w; q++) if (mask[i + q + (j + h) * nu] !== val) break grow;
+          for (let r = 0; r < h; r++) mask.fill(0, i + (j + r) * nu, i + w + (j + r) * nu);
+          parts[(val >> 16) - 1].quad(d, at + o[d], i * U + o[u], (i + w) * U + o[u], j * U + o[v], (j + h) * U + o[v], neg, (val & 0xffff) - 1);
+          i += w;
+        }
       }
     }
   }

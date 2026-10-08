@@ -11,7 +11,7 @@ export function simulateWater(W, H, D, occ, P, R) {
   const solid = (x, y, z) => x >= 0 && y >= 0 && z >= 0 && x < W && y < H && z < D && occ[at(x, y, z)] === 1;
   const flow = new Float32Array(W * H * D), through = new Float32Array(W * H * D);
   const isTop = (x, y, z) => solid(x, y, z) && !solid(x, y + 1, z);
-  for (let x = 0; x < W; x++) for (let z = 0; z < D; z++) for (let y = H - 1; y >= 0; y--) if (solid(x, y, z)) { through[at(x, y, z)] += 1; break; }
+  for (let c = 0; c < layer; c++) for (let i = c + (H - 1) * layer; i >= 0; i -= layer) if (occ[i] === 1) { through[i] += 1; break; }   // column tops
   const bump = vnoise(W, D, 3, R), focus = (1 - P.streakCoverage) * 4, decay = Math.exp(-1 / Math.max(2, P.streakLength));
   const runDown = (wx, y, wz, dx, dz, amt) => {                        // down the face of column (wx, wz), open towards (dx, dz)
     const tx = -dz, tz = dx;
@@ -30,10 +30,9 @@ export function simulateWater(W, H, D, occ, P, R) {
       }
       flow[at(wx, yy, wz)] += amt;
       const spread = Math.min(0.45, (y - yy) * 0.03);                 // streaks widen as they run
-      for (const s of [1, -1]) for (let r = 1; r <= 1; r++) {
-        const hx = wx + tx * s * r, hz = wz + tz * s * r;
-        if (!solid(hx, yy, hz) || solid(hx + dx, yy, hz + dz)) break;
-        flow[at(hx, yy, hz)] += amt * spread / r;
+      for (const s of [1, -1]) {
+        const hx = wx + tx * s, hz = wz + tz * s;
+        if (solid(hx, yy, hz) && !solid(hx + dx, yy, hz + dz)) flow[at(hx, yy, hz)] += amt * spread;
       }
       if (R.f() < 0.05) {                                                // and wander a little
         const s = R.f() < 0.5 ? 1 : -1, nx = wx + tx * s, nz = wz + tz * s;
@@ -70,18 +69,24 @@ export function simulateWater(W, H, D, occ, P, R) {
     }
     for (const c of cells) dist[c] = -1;
   }
-  if (P.windRain > 0) {
-    const a = P.windDir * Math.PI / 180, sx = Math.sin(a), sz = -Math.cos(a);          // towards where the wind comes from
-    const windward = DIRS4.map(([dx, dz]) => [dx, dz, dx * sx + dz * sz]).filter(d => d[2] > 0.2);   // faces that look into the wind
-    for (let y = 1; y < H; y++) for (let z = 0; z < D; z++) for (let x = 0; x < W; x++) {
-      if (occ[at(x, y, z)] !== 1) continue;
-      for (const [dx, dz, facing] of windward) {
-        if (solid(x + dx, y, z + dz)) continue;
-        let open = true;                                                               // rain comes in at ~45° down
-        for (let k = 1; k <= 12 && open; k++) if (solid(Math.round(x + dx + sx * k), y + k, Math.round(z + dz + sz * k))) open = false;
-        if (open) flow[at(x, y, z)] += P.windRain * facing * 1.4;
-      }
-    }
-  }
+  if (P.windRain > 0) windRain(W, H, D, occ, flow, P);
   return { flow, through };
+}
+
+// wind-driven rain wets the faces that look into the wind, unless something stands in the way of rain coming in
+// at ~45° down. A plain loop of its own: it visits every block, so it must stay fast even before the JIT warms up.
+function windRain(W, H, D, occ, flow, P) {
+  const a = P.windDir * Math.PI / 180, sx = Math.sin(a), sz = -Math.cos(a), layer = W * D;   // towards where the wind comes from
+  const windward = DIRS4.map(([dx, dz]) => [dx, dz, dx * sx + dz * sz]).filter(d => d[2] > 0.2);
+  // one direction at a time: a block wet from both still gets its two shares in the same order
+  for (const [dx, dz, facing] of windward) for (let y = 1, i = layer; y < H; y++) for (let z = 0; z < D; z++) for (let x = 0; x < W; x++, i++) {
+    const nx = x + dx, nz = z + dz;
+    if (occ[i] !== 1 || (nx >= 0 && nz >= 0 && nx < W && nz < D && occ[i + dx + dz * W] === 1)) continue;
+    let open = true;
+    for (let k = 1; k <= 12 && open && y + k < H; k++) {
+      const rx = Math.round(nx + sx * k), rz = Math.round(nz + sz * k);
+      open = !(rx >= 0 && rz >= 0 && rx < W && rz < D && occ[((y + k) * D + rz) * W + rx] === 1);
+    }
+    if (open) flow[i] += P.windRain * facing * 1.4;
+  }
 }

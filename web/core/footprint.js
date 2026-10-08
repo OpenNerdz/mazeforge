@@ -114,21 +114,21 @@ export function buildFootprint(P, { W, D, mask }) {
     return [own, u];
   };
   const [owner, ownU] = nearest(() => true), [shaper, shapeU] = runs.some(r => !r.isEnd) ? nearest(r => !r.isEnd) : [owner, ownU];
-  const skinF = (ri, u, y) => runs[ri].skin.F[u * H + y];
   // --- solid where the shaping face has wall at this height...
   const occ = new Uint8Array(W * H * D), at = (x, y, z) => (y * D + z) * W + x;
   for (let x = 0; x < W; x++) for (let z = 0; z < D; z++) {
     const k = x * D + z; if (!mask[k]) continue;
-    for (let y = 0; y < H; y++) if (skinF(shaper[k], shapeU[k], y) < NONE) occ[at(x, y, z)] = 1;
+    const F = runs[shaper[k]].skin.F, u = shapeU[k] * H;
+    for (let y = 0, i = at(x, 0, z); y < H; y++, i += W * D) if (F[u + y] < NONE) occ[i] = 1;
   }
   // --- ...then relief is carved in from every face (the primary first), keeping `core` solid blocks behind
   const endRelief = P.endDetail && !P.seamMatch ? Math.max(0, P.endRelief ?? 2) : 0;   // matched seams: ends are hidden, keep them flat
   const order = runs.map((_, i) => i).sort((a, b) => Number(a !== primary) - Number(b !== primary) || Number(!!runs[a].end) - Number(!!runs[b].end));
   for (const ri of order) {
-    const r = runs[ri], [nx, nz] = N4[r.d];
+    const r = runs[ri], [nx, nz] = N4[r.d], F = r.skin.F;
     r.cells.forEach(([x, z], u) => {
       for (let y = 0; y < H; y++) {
-        let f = skinF(ri, u, y); if (f >= NONE) continue;
+        let f = F[u * H + y]; if (f >= NONE) continue;
         if (r.end) f = Math.min(f, endRelief);
         for (let k = 0; k < f; k++) {
           const cx = x - nx * k, cz = z - nz * k;

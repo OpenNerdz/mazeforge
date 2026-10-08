@@ -17,7 +17,7 @@ export const LAYOUTS = {
   towers(s) {
     const P = s.P, R = s.R, W = s.W;
     const n = Math.max(1, Math.min(P.towerCount, Math.floor((W + P.towerGap) / (4 + P.towerGap))));
-    const ws = splitWidth(W - (n - 1) * (P.towerGap - 1), n, R, 4).map(w => w);
+    const ws = splitWidth(W - (n - 1) * (P.towerGap - 1), n, R, 4);
     const spans = []; let x = 0;
     ws.forEach((w, i) => { spans.push([x, x + w]); x += w + (i < n - 1 ? P.towerGap : 0); });
     const tallest = R.int(0, n - 1);

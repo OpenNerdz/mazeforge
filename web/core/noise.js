@@ -18,7 +18,7 @@ export function vnoise(w, h, scale, rng) {
 
 // value noise stretched vertically (sy >> sx): used for rain striations
 export function streakNoise(w, h, R) {
-  const cols = vnoise(w, Math.ceil(h / 7) + 2, 1.3, R), fine = vnoise(w, h, 1.1, R), out = new Float32Array(w * h), ch = Math.ceil(h / 7) + 2;
+  const ch = Math.ceil(h / 7) + 2, cols = vnoise(w, ch, 1.3, R), fine = vnoise(w, h, 1.1, R), out = new Float32Array(w * h);
   for (let x = 0; x < w; x++) for (let y = 0; y < h; y++) {
     const t = y / 7, y0 = Math.floor(t), f = t - y0;
     out[x * h + y] = 0.8 * (cols[x * ch + y0] * (1 - f) + cols[x * ch + y0 + 1] * f) + 0.2 * fine[x * h + y];

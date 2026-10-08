@@ -7,18 +7,27 @@ import { keyTable } from './grid.js';
 
 const SOFT = k => k.includes('|') || k.endsWith('_leaves') || k === 'moss_carpet';
 const FACE = { n: [0, -1], s: [0, 1], e: [1, 0], w: [-1, 0] };            // direction from the vine to its wall
-const ORIENT = { s: 1.0, e: 0.68, w: 0.68, n: 0.55 };
-const SIDES = ['e', 'n', 's', 'w'];                                          // the order faces are tried in                      // wall to the south = a north-facing, shaded face
+const ORIENT = { s: 1.0, e: 0.68, w: 0.68, n: 0.55 };                        // wall to the south = a north-facing, shaded face
+const SIDES = ['e', 'n', 's', 'w'];                                          // the order faces are tried in
+
+// blocks a vine can hold on to (vines and leaves are only written at the end), and the air beside them: the
+// only places a root can start. Plain loops of their own: they visit every block, so they must be fast from the first run.
+function surfaces({ W, H, D, data, keys }) {
+  const soft = keys.map(SOFT), solidAt = new Uint8Array(data.length), spots = [];
+  for (let i = 0; i < data.length; i++) if (data[i] && !soft[data[i]]) solidAt[i] = 1;
+  for (let y = 0, i = 0; y < H; y++) for (let z = 0; z < D; z++) for (let x = 0; x < W; x++, i++)
+    if (!data[i] && ((x > 0 && solidAt[i - 1]) || (x < W - 1 && solidAt[i + 1]) || (z > 0 && solidAt[i - W]) || (z < D - 1 && solidAt[i + W]))) spots.push(i);
+  return { solidAt, spots };
+}
 export function applyIvy(g, P) {
   const { W, H, D, data, keys } = g;
   const R = new Rng((P.seed * 131 + (P.ivyVariation || 1) * 977) >>> 0);
   const at = (x, y, z) => (y * D + z) * W + x;
   const inb = (x, y, z) => x >= 0 && y >= 0 && z >= 0 && x < W && y < H && z < D;
-  const kid = keyTable(keys).id;
-  const soft = keys.map(SOFT), solidAt = new Uint8Array(data.length);          // vines and leaves are only written at the end
-  for (let i = 0; i < data.length; i++) if (data[i] && !soft[data[i]]) solidAt[i] = 1;
-  const solid = (x, y, z) => inb(x, y, z) && solidAt[at(x, y, z)] === 1;
-  const free = (x, y, z) => inb(x, y, z) && data[at(x, y, z)] === 0;
+  const kid = keyTable(keys).id, { solidAt, spots } = surfaces(g);
+  // written out rather than calling inb / at: these two run a few million times
+  const solid = (x, y, z) => x >= 0 && y >= 0 && z >= 0 && x < W && y < H && z < D && solidAt[(y * D + z) * W + x] === 1;
+  const free = (x, y, z) => x >= 0 && y >= 0 && z >= 0 && x < W && y < H && z < D && data[(y * D + z) * W + x] === 0;
 
   // dampness of each block type: darker shade bands and grime / crack blocks read as wet
   const pal = P.palette, dampOf = new Map(), dry = P.ivyDryShade ?? 0, og = 1 + 2 * (P.ivyOvergrowth ?? 0);   // og: master multiplier
@@ -110,13 +119,8 @@ export function applyIvy(g, P) {
 
   // roots: gather spots, weighted by how welcoming they are
   const drapes = [], roots = [], cracks = [];
-  const nearWall = new Uint8Array(data.length);                     // air with a wall beside it: the only places to look
-  for (let y = 0; y < H; y++) for (let z = 0; z < D; z++) for (let x = 0; x < W; x++) {
-    const i = at(x, y, z); if (!solidAt[i]) continue;
-    if (x > 0) nearWall[i - 1] = 1; if (x < W - 1) nearWall[i + 1] = 1; if (z > 0) nearWall[i - W] = 1; if (z < D - 1) nearWall[i + W] = 1;
-  }
-  for (let y = 0; y < H; y++) for (let z = 0; z < D; z++) for (let x = 0; x < W; x++) {
-    if (!nearWall[at(x, y, z)] || !free(x, y, z)) continue;
+  for (const i of spots) {
+    const x = i % W, z = Math.floor(i / W) % D, y = Math.floor(i / (W * D));
     for (let s = 0; s < 4; s++) {
       const f = SIDES[s], [fx, fz] = FACE[f];
       if (!solid(x + fx, y, z + fz)) continue;
@@ -152,7 +156,7 @@ export function applyIvy(g, P) {
   const isVine = new Uint8Array(data.length); for (const k of vines.keys()) isVine[k] = 1;
   for (const [k] of vines) {
     const x = k % W, z = Math.floor(k / W) % D, y = Math.floor(k / (W * D));
-    let n = 0; for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) for (let dz = -1; dz <= 1; dz++) if (isVine[at(x + dx, y + dy, z + dz)] === 1) n++;
+    let n = 0; for (let dy = -1; dy <= 1; dy++) for (let dz = -1; dz <= 1; dz++) for (let dx = -1; dx <= 1; dx++) if (isVine[k + (dy * D + dz) * W + dx] === 1) n++;
     const holdsHanging = isVine[at(x, y - 1, z)] === 1 && !faceTo(x, y - 1, z);
     if (n >= 8 && !holdsHanging && R.f() < P.ivyLeaves * 0.18 && faceTo(x, y, z)) leaves.set(k, R.f() < 0.22 ? leafB : leafA);
   }

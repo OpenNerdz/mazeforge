@@ -133,7 +133,6 @@ export async function readSchem(buf) {
     return base;
   };
   const palKey = inv.map(s => { const k = toKey(s); if (!kmap.has(k)) { kmap.set(k, keys.length); keys.push(k); } return kmap.get(k); });
-  if (!kmap.has('air')) { /* keep 0 reserved */ }
   const data = new Uint16Array(W * H * D);
   let p = 0, i = 0;
   while (i < W * H * D && p < bd.length) {

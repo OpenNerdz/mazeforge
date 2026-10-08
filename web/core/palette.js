@@ -1,10 +1,10 @@
 // Auto palette: sort the chosen blocks by their real texture colour and assign
 // shade bands + detail roles automatically.
 
-function hexRgb(h) { const n = parseInt(h.slice(1), 16); return [(n >> 16) & 255, (n >> 8) & 255, n & 255]; }
+export function hexRgb(h) { const n = parseInt(h.slice(1), 16); return [(n >> 16) & 255, (n >> 8) & 255, n & 255]; }
 function lin(c) { c /= 255; return c <= 0.04045 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4); }
 // CIE L* (perceived lightness, 0–100), hue (deg), saturation (0–1)
-export function analyze(hex) {
+function analyze(hex) {
   const [r, g, b] = hexRgb(hex || '#808080');
   const Y = 0.2126 * lin(r) + 0.7152 * lin(g) + 0.0722 * lin(b);
   const L = Y > 0.008856 ? 116 * Math.cbrt(Y) - 16 : 903.3 * Y;
