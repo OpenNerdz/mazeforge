@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 2.0.1-beta.3
 
 - Relief carved from two faces no longer cuts a slot right through a wall at corners, junctions and maze wall
   tips, leaving a thin stranded plate: the solid core behind each recess is now kept.
