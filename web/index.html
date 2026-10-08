@@ -61,7 +61,7 @@
   <button id="panelToggle" class="btn icon mobile-only" aria-label="Open settings" aria-controls="settingsPanel" aria-expanded="false"><svg class="i"><use href="#i-sliders"/></svg></button>
   <div class="brand"><img src="icon.svg" alt=""><b class="lbl">MazeForge</b></div>
   <div class="doc">
-    <input aria-label="Design name" id="name" class="field name" spellcheck="false" data-tip="Design name — also the file name">
+    <input aria-label="Design name" id="name" class="field name" maxlength="60" spellcheck="false" data-tip="Design name — also the file name">
     <select aria-label="Starting preset" id="preset" class="field extra" data-tip="Start from a preset"></select>
   </div>
   <div class="group extra">
@@ -77,8 +77,11 @@
     <button id="share" class="btn quiet extra" data-tip="Share this design as a code or link"><svg class="i"><use href="#i-share"/></svg><span class="lbl">Share</span></button>
     <button id="clean" class="btn quiet" data-tip="Clean UI: hide the less-used controls · C"><svg class="i"><use href="#i-focus"/></svg><span class="lbl">Clean</span></button>
     <div class="menuwrap">
-      <button id="more" class="btn quiet" data-tip="More actions"><svg class="i"><use href="#i-more"/></svg><span class="lbl">More</span></button>
+      <button id="more" class="btn quiet" data-tip="More actions" aria-haspopup="true" aria-expanded="false" aria-controls="moreMenu"><svg class="i"><use href="#i-more"/></svg><span class="lbl">More</span></button>
       <div class="menu" id="moreMenu">
+        <button class="mobile-only" data-click="#reseed"><svg class="i"><use href="#i-dice"/></svg>New seed<kbd>R</kbd></button>
+        <button class="clean-only" id="undoMenu" data-click="#undo"><svg class="i"><use href="#i-undo"/></svg>Undo</button>
+        <button class="clean-only" id="redoMenu" data-click="#redo"><svg class="i"><use href="#i-redo"/></svg>Redo</button>
         <button class="clean-only" data-click="#seeds"><svg class="i"><use href="#i-browse"/></svg>Browse seeds<kbd>B</kbd></button>
         <button class="clean-only" data-click="#remix"><svg class="i"><use href="#i-remix"/></svg>Remix<kbd>M</kbd></button>
         <button class="clean-only" data-click="#share"><svg class="i"><use href="#i-share"/></svg>Share…</button>
@@ -103,7 +106,7 @@
   <button id="panelBackdrop" class="panel-backdrop hidden" aria-label="Close settings"></button>
   <aside class="panel" id="settingsPanel" aria-label="Structure settings">
     <div class="panelhead">
-      <nav class="tabs" id="tabs">
+      <nav class="tabs" id="tabs" aria-label="Settings categories">
         <button data-t="shape"><svg class="i"><use href="#i-cube"/></svg>Shape</button>
         <button data-t="detail"><svg class="i"><use href="#i-slabs"/></svg>Detail</button>
         <button data-t="weather"><svg class="i"><use href="#i-rain"/></svg>Weather</button>
@@ -150,28 +153,28 @@
   </main>
 </div>
 
-<dialog id="dlgSave">
+<dialog id="dlgSave" aria-labelledby="dlgSaveTitle">
   <form method="dialog">
-    <header><h3>Save to Minecraft</h3><button class="btn icon quiet" value="cancel" data-tip="Close"><svg class="i"><use href="#i-x"/></svg></button></header>
+    <header><h3 id="dlgSaveTitle">Save to Minecraft</h3><button type="button" class="btn icon quiet" data-close data-tip="Close"><svg class="i"><use href="#i-x"/></svg></button></header>
     <div class="tgt-head"><p class="lead">Choose where to save</p><button type="button" id="rescan" class="btn" data-tip="Check standard launcher locations on this computer"><svg class="i"><use href="#i-search"/></svg>Find game folders</button></div>
     <p class="hint">Folders are checked only when you choose Find game folders. You can also add any game, server or schematic folder below.</p>
     <div id="targets" class="targets"></div>
     <div class="addfolder">
-      <input id="addPath" class="field" placeholder="Not listed? Paste a Minecraft, instance or server folder" spellcheck="false">
+      <input id="addPath" class="field" aria-label="Folder path to add" placeholder="Not listed? Paste a folder path" spellcheck="false">
       <button type="button" id="pickFolder" class="btn" data-tip="Choose a folder on this PC"><svg class="i"><use href="#i-folder"/></svg>Browse</button>
       <button type="button" id="addFolder" class="btn">Add</button>
     </div>
     <label class="field-row">Subfolder <input id="subfolder" class="field" value="studio" spellcheck="false"></label>
     <label class="check"><input type="checkbox" id="overwrite"> Overwrite files with the same name</label>
-    <label class="check" id="chunkRow"><input type="checkbox" id="chunked"> Split into chunks of <input type="number" id="chunkSize" class="field tiny" value="64" min="16" max="256"> blocks</label>
+    <label class="check" id="chunkRow"><input type="checkbox" id="chunked"> Split into chunks of <input type="number" id="chunkSize" class="field tiny" value="64" min="16" max="256" aria-label="Chunk size in blocks"> blocks</label>
     <p class="hint"><code id="loadHint"></code></p>
-    <footer><button value="cancel" class="btn">Cancel</button><button id="doSave" value="ok" class="btn primary">Save</button></footer>
+    <footer><button type="button" id="saveDownload" class="btn start" data-tip="Download the .schem file and place it yourself"><svg class="i"><use href="#i-download"/></svg>Download .schem</button><button type="button" class="btn" data-close>Cancel</button><button id="doSave" value="ok" class="btn primary">Save</button></footer>
   </form>
 </dialog>
 
-<dialog id="dlgTextures">
+<dialog id="dlgTextures" aria-labelledby="dlgTexturesTitle">
   <form method="dialog">
-    <header><h3>Minecraft textures</h3><button class="btn icon quiet" aria-label="Close" value="cancel"><svg class="i"><use href="#i-x"/></svg></button></header>
+    <header><h3 id="dlgTexturesTitle">Minecraft textures</h3><button type="button" class="btn icon quiet" data-close aria-label="Close"><svg class="i"><use href="#i-x"/></svg></button></header>
     <p class="lead">Use the textures from the version you play.</p>
     <p>Choose your installed Minecraft Java Edition client JAR (1.14 or newer). Only the file you choose is read. Textures stay on this computer.</p>
     <p class="hint">The official launcher keeps client JARs in its versions folder. Other launchers often keep them in their libraries folder. A server JAR contains no usable textures.</p>
@@ -181,55 +184,57 @@
   </form>
 </dialog>
 
-<dialog id="dlgBatch">
+<dialog id="dlgBatch" aria-labelledby="dlgBatchTitle">
   <form method="dialog">
-    <header><h3>Batch export</h3><button class="btn icon quiet" value="cancel" data-tip="Close"><svg class="i"><use href="#i-x"/></svg></button></header>
+    <header><h3 id="dlgBatchTitle">Batch export</h3><button type="button" class="btn icon quiet" data-close data-tip="Close"><svg class="i"><use href="#i-x"/></svg></button></header>
     <p class="lead">Several variants of the current design, each with its own seed. Saved to the folders chosen in Save to Minecraft.</p>
     <label class="field-row">Variants <input type="number" id="bCount" class="field" min="1" max="100" value="6"></label>
     <label class="field-row">Start seed <input type="number" id="bSeed" class="field"></label>
     <label class="field-row">Name pattern <input id="bPattern" class="field" value="{name}_{n}" spellcheck="false"></label>
+    <p class="hint"><code>{name}</code>, <code>{n}</code> and <code>{seed}</code> are filled in for each variant.</p>
     <label class="check"><input type="checkbox" id="bNumbers"> Number them (lettering 1, 2, 3…)</label>
     <div class="progress"><div id="bBar"></div></div>
-    <footer><button value="cancel" class="btn">Close</button><button id="doBatch" value="ok" class="btn primary">Export</button></footer>
+    <footer><button type="button" class="btn" data-close>Close</button><button id="doBatch" value="ok" class="btn primary">Export</button></footer>
   </form>
 </dialog>
 
-<dialog id="dlgSeeds" class="wide">
+<dialog id="dlgSeeds" aria-labelledby="dlgSeedsTitle" class="wide">
   <form method="dialog">
-    <header><h3>Browse seeds</h3><button class="btn icon quiet" value="cancel" data-tip="Close"><svg class="i"><use href="#i-x"/></svg></button></header>
+    <header><h3 id="dlgSeedsTitle">Browse seeds</h3><button type="button" class="btn icon quiet" data-close data-tip="Close"><svg class="i"><use href="#i-x"/></svg></button></header>
     <p class="lead">Same settings, different seeds. Click one to use it.</p>
     <div id="seedGrid" class="seedgrid"></div>
-    <footer><button value="cancel" class="btn">Close</button><button id="seedMore" class="btn primary">Next 12</button></footer>
+    <footer><button type="button" class="btn start" data-close>Close</button><button type="button" id="seedPrev" class="btn"><svg class="i"><use href="#i-left"/></svg>Previous 12</button><button type="button" id="seedMore" class="btn primary">Next 12<svg class="i"><use href="#i-right"/></svg></button></footer>
   </form>
 </dialog>
 
-<dialog id="dlgShare">
+<dialog id="dlgShare" aria-labelledby="dlgShareTitle">
   <form method="dialog">
-    <header><h3>Share design</h3><button class="btn icon quiet" value="cancel" data-tip="Close"><svg class="i"><use href="#i-x"/></svg></button></header>
+    <header><h3 id="dlgShareTitle">Share design</h3><button type="button" class="btn icon quiet" data-close data-tip="Close"><svg class="i"><use href="#i-x"/></svg></button></header>
     <p class="lead">Every setting in one code. Paste it back here, or open the link, to get exactly the same design.</p>
-    <div class="copyrow"><input id="shareCode" class="field mono" readonly spellcheck="false"><button id="copyCode" class="btn"><svg class="i"><use href="#i-copy"/></svg>Code</button></div>
-    <div class="copyrow"><input id="shareLink" class="field mono" readonly spellcheck="false"><button id="copyLink" class="btn"><svg class="i"><use href="#i-copy"/></svg>Link</button></div>
+    <div class="copyrow"><input id="shareCode" class="field mono" aria-label="Share code" readonly spellcheck="false"><button type="button" id="copyCode" class="btn" aria-label="Copy code"><svg class="i"><use href="#i-copy"/></svg>Code</button></div>
+    <div class="copyrow"><input id="shareLink" class="field mono" aria-label="Share link" readonly spellcheck="false"><button type="button" id="copyLink" class="btn" aria-label="Copy link"><svg class="i"><use href="#i-copy"/></svg>Link</button></div>
     <p class="lead sub">Load a design</p>
-    <div class="copyrow"><input id="shareIn" class="field mono" placeholder="MSS1.…" spellcheck="false"><button id="loadShare" class="btn primary">Load</button></div>
+    <div class="copyrow"><input id="shareIn" class="field mono" aria-label="Share code or link to load" placeholder="MSS1.…" spellcheck="false"><button id="loadShare" class="btn primary">Load</button></div>
   </form>
 </dialog>
 
-<dialog id="dlgKeys">
+<dialog id="dlgKeys" aria-labelledby="dlgKeysTitle">
   <form method="dialog">
-    <header><h3>Keyboard shortcuts</h3><button class="btn icon quiet" value="cancel" data-tip="Close"><svg class="i"><use href="#i-x"/></svg></button></header>
+    <header><h3 id="dlgKeysTitle">Keyboard shortcuts</h3><button type="button" class="btn icon quiet" data-close data-tip="Close"><svg class="i"><use href="#i-x"/></svg></button></header>
     <div class="keys">
       <span><kbd>R</kbd></span><span>New seed</span><span><kbd>B</kbd></span><span>Browse seeds</span>
       <span><kbd>M</kbd></span><span>Remix</span><span><kbd>E</kbd></span><span>Download .schem</span>
       <span><kbd>1</kbd>–<kbd>6</kbd></span><span>Camera views</span><span><kbd>P</kbd></span><span>Screenshot</span>
       <span><kbd>C</kbd></span><span>Clean UI</span><span><kbd>?</kbd></span><span>This list</span>
       <span><kbd>Ctrl</kbd><kbd>S</kbd></span><span>Save to Minecraft</span><span><kbd>Ctrl</kbd><kbd>Z</kbd></span><span>Undo · add Shift to redo</span>
+      <span><kbd>Esc</kbd></span><span>Close a dialog, menu or picker</span>
     </div>
     <p class="hint">Double-click a slider to reset it. An orange dot marks a setting changed from its default.</p>
   </form>
 </dialog>
 
 <input type="file" id="fileIn" accept=".schem" hidden>
-<div id="toasts"></div>
+<div id="toasts" popover="manual" role="status" aria-live="polite"></div>
 <script type="module" src="main.js"></script>
 </body>
 </html>

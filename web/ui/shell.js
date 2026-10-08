@@ -16,7 +16,7 @@ export function createShell(app, panel) {
     $('#panelBackdrop').classList.toggle('hidden', !open);
     $('#panelToggle').setAttribute('aria-expanded', String(open));
     $('#panelToggle').setAttribute('aria-label', open ? 'Close settings' : 'Open settings');
-    if (!open) $('#panelToggle').focus();
+    (open ? $('#tabs button.on') || $('#filter') : $('#panelToggle')).focus();
   };
   $('#panelToggle').onclick = () => setPanel(!document.body.classList.contains('panel-open'));
   $('#panelBackdrop').onclick = () => setPanel(false);
@@ -37,8 +37,9 @@ export function createShell(app, panel) {
     app.load(next); $('#preset').value = ''; toast(`Loaded “${n}”`);
   };
   $('#savePreset').onclick = () => {
-    const n = prompt('Preset name:', P().name); if (!n) return;
-    const u = LS.get('presets', {}); u[n] = structuredClone(P()); LS.set('presets', u); presetList(); toast(`Saved preset “${n}”`, 'ok');
+    const n = prompt('Preset name:', P().name)?.trim(); if (!n) return;
+    const u = LS.get('presets', {}); if (u[n] && !confirm(`Replace your preset “${n}”?`)) return;
+    u[n] = structuredClone(P()); LS.set('presets', u); presetList(); toast(`Saved preset “${n}”`, 'ok');
   };
   $('#presetMobile').onchange = () => {
     $('#preset').value = $('#presetMobile').value;
@@ -68,28 +69,40 @@ export function createShell(app, panel) {
   $('#name').onchange = () => { P().name = safeName($('#name').value); $('#name').value = P().name; app.store.commit(); };
 
   // ---- viewport
-  $$('#views button').forEach(b => { b.onclick = () => { $$('#views button').forEach(x => x.classList.toggle('on', x === b)); viewer.view(b.dataset.v); }; });
-  const toggle = (id, fn, on) => { const b = $(id); b.classList.toggle('on', on); b.onclick = () => fn(b.classList.toggle('on')); };
+  const pressed = (b, on) => { b.classList.toggle('on', on); b.setAttribute('aria-pressed', String(on)); };
+  $$('#views button').forEach(b => {
+    pressed(b, b.classList.contains('on'));
+    b.onclick = () => { $$('#views button').forEach(x => pressed(x, x === b)); viewer.view(b.dataset.v); };
+  });
+  const toggle = (id, fn, on) => { const b = $(id); pressed(b, on); b.onclick = () => { pressed(b, !b.classList.contains('on')); fn(b.classList.contains('on')); }; };
   toggle('#tShadow', v => viewer.setShadows(v), true);
   toggle('#tGrid', v => viewer.setGrid(v), false);
   toggle('#tSpin', v => { viewer.autoRotate = v; }, false);
   toggle('#tMarker', v => viewer.setMarker(v), true);
   $('#shot').onclick = () => { const a = document.createElement('a'); a.href = viewer.screenshot(); a.download = safeName(P().name) + '.png'; a.click(); };
-  const sun = () => viewer.setSun(+$('#sunAz').value, +$('#sunEl').value);
+  // the orange part of a slider's track follows its value (Firefox draws this itself)
+  const fill = r => r.style.setProperty('--p', ((r.value - r.min) / (r.max - r.min) * 100) + '%');
+  const sun = () => { fill($('#sunAz')); fill($('#sunEl')); viewer.setSun(+$('#sunAz').value, +$('#sunEl').value); };
   $('#sunAz').oninput = sun; $('#sunEl').oninput = sun;
-  $('#tiles').oninput = () => { $('#tilesOut').textContent = $('#tiles').value; app.regenerate(); };
+  $('#tiles').oninput = () => { fill($('#tiles')); $('#tilesOut').textContent = $('#tiles').value; app.regenerate(); };
+  ['#sunAz', '#sunEl', '#tiles'].forEach(id => fill($(id)));
 
   // ---- More menu
   const menu = $('#moreMenu');
-  $('#more').onclick = e => { e.stopPropagation(); menu.classList.toggle('on'); };
-  menu.addEventListener('click', () => menu.classList.remove('on'));
-  document.addEventListener('click', e => { if (!menu.contains(e.target)) menu.classList.remove('on'); });
+  const setMenu = open => { menu.classList.toggle('on', open); $('#more').setAttribute('aria-expanded', String(open)); };
+  $('#more').onclick = e => { e.stopPropagation(); setMenu(!menu.classList.contains('on')); };
+  menu.addEventListener('click', () => setMenu(false));
+  document.addEventListener('click', e => { if (!menu.contains(e.target)) setMenu(false); });
+  addEventListener('keydown', e => { if (e.key === 'Escape' && menu.classList.contains('on')) { setMenu(false); $('#more').focus(); } });
   $('#shortcuts').onclick = () => $('#dlgKeys').showModal();
   menu.querySelectorAll('[data-click]').forEach(b => { b.onclick = () => $(b.dataset.click).click(); });
 
+  // dialogs: the close and cancel buttons are plain buttons, so Enter in a field runs the dialog's main action
+  $$('dialog [data-close]').forEach(b => { b.onclick = () => b.closest('dialog').close(); });
+
   // ---- clean UI: hides the less-used controls (see body.clean in the CSS); simple settings only
   function setClean(on) {
-    panel.setClean(on); document.body.classList.toggle('clean', on); $('#clean').classList.toggle('on', on);
+    panel.setClean(on); document.body.classList.toggle('clean', on); pressed($('#clean'), on);
     requestAnimationFrame(fitBars);
   }
   $('#clean').onclick = () => setClean(!panel.clean);
@@ -98,11 +111,15 @@ export function createShell(app, panel) {
 
   // ---- keyboard
   addEventListener('keydown', e => {
-    if (/** @type {HTMLElement} */ (e.target).matches('input, select, textarea')) return;
     const k = e.key.toLowerCase(), mod = e.ctrlKey || e.metaKey;
+    const busy = document.querySelector('dialog[open], .picker');            // shortcuts never act behind a dialog or the block picker
+    if (mod && k === 's') {                                                   // also from a text field: finish the edit, then save
+      e.preventDefault(); if (busy) return;
+      /** @type {HTMLElement} */ (document.activeElement)?.blur?.(); $('#save').click(); return;
+    }
+    if (busy || /** @type {HTMLElement} */ (e.target).matches('input, select, textarea')) return;
     if (mod && k === 'z') { e.preventDefault(); undo(e.shiftKey ? 1 : -1); }
     else if (mod && k === 'y') { e.preventDefault(); undo(1); }
-    else if (mod && k === 's') { e.preventDefault(); $('#save').click(); }
     else if (mod) return;
     else if (k === 'r') $('#reseed').click();
     else if (k === 'm') remix();

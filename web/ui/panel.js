@@ -26,7 +26,7 @@ export function createPanel(app) {
   }
   function control(it) {
     const d = document.createElement('div'); d.className = 'ctl' + (it.adv ? ' adv' : ''); d.dataset.search = (it.label + ' ' + (it.help || '')).toLowerCase();
-    const tip = it.help ? ` <i class="tip" tabindex="0" data-tip="${esc(it.help)}">?</i>` : '';
+    const tip = it.help ? ` <i class="tip" tabindex="0" role="img" aria-label="${esc(it.help)}" data-tip="${esc(it.help)}">?</i>` : '';
     let paint;
     if (it.type === 'range') {
       d.innerHTML = `<label>${it.label}${it.unit ? ` <span class="unit">${it.unit}</span>` : ''}${tip}</label><input class="val" type="number" step="${it.step}"><input type="range" min="${it.min}" max="${it.max}" step="${it.step}">`;
@@ -81,13 +81,15 @@ export function createPanel(app) {
   const palette = createPaletteEditor(app, control);
   const faces = createFaces(app);
   const root = $('#controls');
+  const syncOpen = sec => sec.querySelector('.sec-toggle').setAttribute('aria-expanded', String(!sec.classList.contains('closed')));
   for (const sec of SCHEMA) {
     const el = document.createElement('section'); el.className = 'sec' + (closed.has(sec.id) ? ' closed' : ''); el.dataset.id = sec.id; defOf.set(el, sec);
-    el.innerHTML = `<div class="sec-h"><span class="ico"><svg class="i"><use href="#i-${sec.ico}"/></svg></span>${sec.title}<span class="chev"><svg class="i"><use href="#i-chev"/></svg></span><button class="reset" data-tip="Reset this section to its defaults">Reset</button></div><div class="sec-b"></div>`;
-    el.querySelector('.sec-h').addEventListener('click', e => {
-      if (/** @type {HTMLElement} */ (e.target).classList.contains('reset')) return;
+    el.innerHTML = `<div class="sec-h"><button type="button" class="sec-toggle" aria-controls="sec-${sec.id}"><span class="ico"><svg class="i"><use href="#i-${sec.ico}"/></svg></span><span class="sec-title">${sec.title}</span><span class="chev"><svg class="i"><use href="#i-chev"/></svg></span></button><button type="button" class="reset" data-tip="Reset ${esc(sec.title)} to its defaults">Reset</button></div><div class="sec-b" id="sec-${sec.id}"></div>`;
+    el.querySelector('.sec-toggle').addEventListener('click', () => {
       el.classList.toggle('closed'); el.classList.contains('closed') ? closed.add(sec.id) : closed.delete(sec.id); LS.set('closed', [...closed]);
+      syncOpen(el);
     });
+    syncOpen(el);
     el.querySelector('.reset').addEventListener('click', () => {
       if (sec.custom === 'palette') { P().palette = structuredClone(DEFAULTS.palette); for (const k of PALETTE_KEYS) P()[k] = structuredClone(DEFAULTS[k]); }
       else if (sec.custom === 'faces') P().faceOverrides = {};
@@ -102,13 +104,15 @@ export function createPanel(app) {
     body.appendChild(more);
     root.appendChild(el);
   }
+  const none = document.createElement('p'); none.className = 'nomatch hidden'; root.appendChild(none);
 
   // ---- what shows: the current tab (or every tab while searching), simple or advanced, and only what applies
   function applyFilter() {
     const q = $('#filter').value.trim().toLowerCase();
-    $$('#tabs button').forEach(b => b.classList.toggle('on', !q && b.dataset.t === tab));
+    $$('#tabs button').forEach(b => { const on = !q && b.dataset.t === tab; b.classList.toggle('on', on); b.setAttribute('aria-pressed', String(on)); });
+    let shown = 0;
     $$('.sec').forEach(sec => {
-      const def = defOf.get(sec), title = sec.querySelector('.sec-h').textContent.toLowerCase();
+      const def = defOf.get(sec), title = sec.querySelector('.sec-title').textContent.toLowerCase();
       const show = (q || def.tab === tab) && (!def.when || def.when(P()));
       let any = false, extra = 0;
       sec.querySelectorAll('.ctl, .band, .role').forEach(c => {
@@ -123,13 +127,16 @@ export function createPanel(app) {
       const more = sec.querySelector('.more');
       more.textContent = `+ ${extra} more setting${extra === 1 ? '' : 's'}`; more.classList.toggle('hidden', !extra);
       sec.style.display = show && (any || extra) ? '' : 'none';
-      if (q && any) sec.classList.remove('closed');
+      if (sec.style.display === '') shown++;
+      if (q && any) { sec.classList.remove('closed'); syncOpen(sec); }
     });
+    none.textContent = `No settings match “${$('#filter').value.trim()}”.`;
+    none.classList.toggle('hidden', !q || shown > 0);
   }
-  function setTab(t) { tab = t; LS.set('tab', t); $('#filter').value = ''; applyFilter(); $('.panel').scrollTop = 0; }
+  function setTab(t) { tab = t; LS.set('tab', t); $('#filter').value = ''; applyFilter(); root.scrollTop = 0; }
   function setAdvanced(on) { advanced = on; LS.set('advanced', on); $('#advanced').checked = on; applyFilter(); }
   function setAllSections(open) {
-    $$('.sec').forEach(sec => { sec.classList.toggle('closed', !open); open ? closed.delete(sec.dataset.id) : closed.add(sec.dataset.id); });
+    $$('.sec').forEach(sec => { sec.classList.toggle('closed', !open); open ? closed.delete(sec.dataset.id) : closed.add(sec.dataset.id); syncOpen(sec); });
     LS.set('closed', [...closed]);
   }
   $$('#tabs button').forEach(b => { b.onclick = () => setTab(b.dataset.t); });

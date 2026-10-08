@@ -7,9 +7,10 @@ export function createSeeds(app) {
     base = start; const my = ++job, grid = $('#seedGrid'), P = app.store.P;
     const top = ['maze', 'cross', 'tee'].includes(P.piece);
     grid.innerHTML = '';
-    const seeds = Array.from({ length: 12 }, (_, i) => start + i);
+    const seeds = Array.from({ length: 12 }, (_, i) => base + i);
     const cards = seeds.map(sd => {
-      const c = document.createElement('div'); c.className = 'seedcard' + (sd === app.store.P.seed ? ' cur' : ''); c.innerHTML = `<div class="wait">…</div><span>${sd}</span>`;
+      const c = document.createElement('button'); c.type = 'button'; c.className = 'seedcard' + (sd === app.store.P.seed ? ' cur' : '');
+      c.setAttribute('aria-label', `Use seed ${sd}`); c.innerHTML = `<div class="wait">…</div><span>${sd}</span>`;
       c.onclick = () => { app.store.P.seed = sd; app.changed(); $('#dlgSeeds').close(); toast(`Seed ${sd}`); };
       grid.appendChild(c); return c;
     });
@@ -25,6 +26,7 @@ export function createSeeds(app) {
     })().catch(err => toast(err.message, 'err'));
   }
   $('#seeds').onclick = () => { $('#dlgSeeds').showModal(); open(app.store.P.seed); };
-  $('#seedMore').onclick = e => { e.preventDefault(); open(base + 12); };
+  $('#seedMore').onclick = () => open(base + 12);
+  $('#seedPrev').onclick = () => open(base - 12);
   $('#dlgSeeds').addEventListener('close', () => { job++; });
 }

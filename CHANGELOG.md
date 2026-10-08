@@ -5,6 +5,16 @@
 - Feature the current beta in GitHub’s Latest release slot and use a lasting download link.
 - Validate desktop builds on pull requests and group routine dependency updates into monthly batches.
 - Document release verification and publishing.
+- Messages and tooltips now appear above open dialogs instead of behind their dimmed backdrop.
+- Enter in a dialog field runs the dialog's main action (Save, Load, Export) instead of closing it.
+- Ctrl+S saves from a text field too, and single-key shortcuts no longer act behind an open dialog.
+- The Save dialog offers Download .schem; the seed browser can page back; batch export stops when closed and reports failures.
+- Settings sections, seed thumbnails and the block picker work from the keyboard; the picker closes with Esc.
+- Phones: the details card is visible again, dialogs fit the screen, and New seed, Undo and Redo are in the More menu.
+- Medium-width windows no longer cut off the settings tabs and switches; slider fills match their values.
+- Tiles is disabled for pieces it does not affect; switching tabs scrolls to the top; empty searches say so.
+- Higher-contrast help text, named dialogs and icon buttons, and toggle states for screen readers.
+- Startup builds the first design once instead of twice.
 
 ## 2.0.1-beta.1
 

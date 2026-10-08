@@ -36,7 +36,7 @@ export function createPaletteEditor(app, control) {
   /** @param {string} k @param {{ remove?: () => void, extra?: string }} [opts] */
   function chip(k, { remove, extra = '' } = {}) {
     const c = document.createElement('span'); c.className = 'chip'; c.dataset.tip = library[k]?.id || k;
-    c.innerHTML = `${icon(library, k)}${esc(nice(k))}${extra}${remove ? '<button data-tip="Remove">×</button>' : ''}`;
+    c.innerHTML = `${icon(library, k)}${esc(nice(k))}${extra}${remove ? `<button type="button" data-tip="Remove" aria-label="Remove ${esc(nice(k))}">×</button>` : ''}`;
     if (remove) c.querySelector('button').onclick = remove;
     return c;
   }
@@ -85,36 +85,48 @@ export function createPaletteEditor(app, control) {
     }
   }
 
-  // the block picker: search, categories, full cubes only
+  // the block picker: search, categories, full cubes only. Esc or a click outside closes it.
   function pick(anchor, cb) {
     document.querySelector('.picker')?.remove();
-    const p = document.createElement('div'); p.className = 'picker';
-    p.innerHTML = `<div class="pk-top"><input placeholder="Search ${blockKeys.length} blocks…" spellcheck="false"><label class="pk-full" data-tip="Full cubes suit walls best; turn off to see stairs, slabs, plants, glass…"><input type="checkbox"> Full blocks only</label></div>
+    const p = document.createElement('div'); p.className = 'picker'; p.setAttribute('role', 'dialog'); p.setAttribute('aria-label', 'Choose a block');
+    p.innerHTML = `<div class="pk-top"><input aria-label="Search blocks" placeholder="Search ${blockKeys.length} blocks…" spellcheck="false"><label class="pk-full" data-tip="Full cubes suit walls best; turn off to see stairs, slabs, plants, glass…"><input type="checkbox"> Full blocks only</label></div>
       <div class="pk-cats"></div><div class="list"></div><div class="pk-foot"></div>`;
     const list = $('.list', p), inp = $('.pk-top input', p), full = $('.pk-full input', p), cats = $('.pk-cats', p), foot = $('.pk-foot', p);
     let cat = LS.get('pickCat', 'All'); if (!categories.includes(cat)) cat = 'All';
     full.checked = LS.get('pickFull', true);
-    cats.innerHTML = categories.map(c => `<button data-c="${c}">${c}</button>`).join('');
+    cats.innerHTML = categories.map(c => `<button type="button" data-c="${c}">${c}</button>`).join('');
     const fill = () => {
       const q = inp.value.trim().toLowerCase().replace(/ /g, '_');
-      cats.querySelectorAll('button').forEach(b => b.classList.toggle('on', b.dataset.c === cat));
+      cats.querySelectorAll('button').forEach(b => { b.classList.toggle('on', b.dataset.c === cat); b.setAttribute('aria-pressed', String(b.dataset.c === cat)); });
       const shown = blockKeys.filter(k => {
         const e = library[k];
         if (full.checked && !e.full) return false;
         return q ? k.includes(q) || e.cat.toLowerCase().includes(q.replace(/_/g, ' ')) : cat === 'All' || e.cat === cat;
       });
-      list.innerHTML = shown.map(k => { const e = library[k]; return `<div class="opt${e.full ? '' : ' partial'}" data-k="${k}" data-tip="${e.id}${e.full ? '' : ' — not a full cube'}">${icon(library, k)}${esc(nice(k))}</div>`; }).join('');
+      list.innerHTML = shown.map(k => { const e = library[k]; return `<button type="button" class="opt${e.full ? '' : ' partial'}" data-k="${k}" data-tip="${e.id}${e.full ? '' : ' — not a full cube'}" aria-label="${esc(nice(k))}${e.full ? '' : ', not a full cube'}">${icon(library, k)}<span>${esc(nice(k))}</span></button>`; }).join('');
       foot.textContent = `${shown.length} block${shown.length === 1 ? '' : 's'}${q ? ' matching' : cat !== 'All' ? ' in ' + cat : ''}${full.checked ? ' · full cubes' : ''}`;
     };
-    list.onclick = e => { const o = e.target.closest('.opt'); if (o) { p.remove(); cb(o.dataset.k); } };
+    const close = () => { p.remove(); document.removeEventListener('mousedown', outside); anchor.focus(); };
+    const outside = e => { if (!p.contains(/** @type {Node} */ (e.target))) { p.remove(); document.removeEventListener('mousedown', outside); } };
+    // keyboard: Enter in the search picks the first match, arrows move through the two-column list
+    p.addEventListener('keydown', e => {
+      const opts = [...list.querySelectorAll('.opt')], at = opts.indexOf(document.activeElement);
+      const step = { ArrowDown: 2, ArrowUp: -2, ArrowRight: 1, ArrowLeft: -1 }[e.key];
+      if (e.key === 'Escape') { e.stopPropagation(); close(); }
+      else if (e.key === 'Enter' && e.target === inp && opts.length) { e.preventDefault(); opts[0].click(); }
+      else if (e.key === 'ArrowDown' && e.target === inp) { e.preventDefault(); opts[0]?.focus(); }
+      else if (step && at >= 0) { e.preventDefault(); (at + step < 0 ? inp : opts[Math.min(opts.length - 1, at + step)]).focus(); }
+    });
+    list.onclick = e => { const o = e.target.closest('.opt'); if (o) { close(); cb(o.dataset.k); } };
     cats.onclick = e => { const c = e.target.dataset?.c; if (c) { cat = c; LS.set('pickCat', c); inp.value = ''; fill(); } };
     full.onchange = () => { LS.set('pickFull', full.checked); fill(); };
     inp.oninput = fill; fill();
     document.body.appendChild(p);
-    const r = anchor.getBoundingClientRect();
-    p.style.left = Math.max(8, Math.min(r.left, innerWidth - 430)) + 'px'; p.style.top = Math.max(8, Math.min(r.bottom + 4, innerHeight - 490)) + 'px';
+    const r = anchor.getBoundingClientRect();                                // below the button, kept on screen (narrow windows shrink it)
+    p.style.left = Math.max(8, Math.min(r.left, innerWidth - p.offsetWidth - 8)) + 'px';
+    p.style.top = Math.max(8, Math.min(r.bottom + 4, innerHeight - p.offsetHeight - 8)) + 'px';
     inp.focus();
-    setTimeout(() => document.addEventListener('mousedown', function close(e) { if (!p.contains(/** @type {Node} */ (e.target))) { p.remove(); document.removeEventListener('mousedown', close); } }), 0);
+    setTimeout(() => document.addEventListener('mousedown', outside), 0);
   }
 
   return { build, paint };

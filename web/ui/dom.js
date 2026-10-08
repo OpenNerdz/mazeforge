@@ -13,9 +13,17 @@ export const LS = {
   set(k, v) { try { localStorage.setItem('mss.' + k, JSON.stringify(v)); } catch { /* storage unavailable */ } },
 };
 
+// popovers sit in the top layer: re-showing one moves it above anything opened since, such as a modal dialog
+export function raise(el) {
+  if (!el.showPopover) return;                                          // no popover support: a plain fixed element
+  if (el.matches(':popover-open')) el.hidePopover();
+  el.showPopover();
+}
+
 export function toast(msg, kind = '') {
-  const t = document.createElement('div'); t.className = 'toast ' + kind; t.textContent = msg; $('#toasts').appendChild(t);
-  setTimeout(() => { t.style.transition = 'opacity .3s'; t.style.opacity = '0'; setTimeout(() => t.remove(), 300); }, 3200);
+  const box = $('#toasts'), t = document.createElement('div'); t.className = 'toast ' + kind; t.textContent = msg; box.appendChild(t);
+  raise(box);
+  setTimeout(() => { t.style.transition = 'opacity .3s'; t.style.opacity = '0'; setTimeout(() => t.remove(), 300); }, kind === 'err' ? 6000 : 3200);
 }
 export const copyText = (text, done = 'Copied') => navigator.clipboard.writeText(text).then(() => toast(done, 'ok'), () => toast('Could not copy', 'err'));
 
@@ -33,10 +41,18 @@ export function icon(library, k) {
 
 // tooltips for anything with data-tip: one floating element, so they are never clipped by a scrolling panel
 export function installTooltips() {
-  $$('button[data-tip]').forEach(b => { if (!b.hasAttribute('aria-label')) b.setAttribute('aria-label', b.dataset.tip); });
-  const tip = document.createElement('div'); tip.className = 'tooltip'; document.body.appendChild(tip);
+  // icon-only buttons are named by their tip, including ones drawn later (details card, palette chips, folder list)
+  const name = root => [root, ...root.querySelectorAll('button[data-tip]')].forEach(b => {
+    if (b.matches?.('button[data-tip]') && !b.hasAttribute('aria-label')) b.setAttribute('aria-label', b.dataset.tip);
+  });
+  name(document);
+  new MutationObserver(list => list.forEach(m => m.addedNodes.forEach(n => { if (n instanceof Element) name(n); })))
+    .observe(document.body, { childList: true, subtree: true });
+  const tip = document.createElement('div'); tip.className = 'tooltip'; tip.popover = 'manual'; document.body.appendChild(tip); raise(tip);
   const show = e => {
     const t = e.target.closest?.('[data-tip]'); if (!t) return;
+    if (e.type === 'focusin' && !e.target.matches(':focus-visible')) return;  // a click focuses too: tips follow the keyboard only
+    if (document.querySelector('dialog[open]')) { tip.classList.remove('on'); raise(tip); void tip.offsetWidth; }  // above the dialog
     tip.textContent = t.dataset.tip; tip.classList.add('on');
     const r = t.getBoundingClientRect(), w = tip.offsetWidth, h = tip.offsetHeight;
     tip.style.left = Math.max(8, Math.min(innerWidth - w - 8, r.left - 12)) + 'px';
@@ -44,6 +60,7 @@ export function installTooltips() {
   };
   const hide = e => { const t = e.target.closest?.('[data-tip]'); if (t && !t.contains(e.relatedTarget)) tip.classList.remove('on'); };
   document.addEventListener('mousedown', () => tip.classList.remove('on'));
+  document.addEventListener('keydown', e => { if (e.key === 'Escape') tip.classList.remove('on'); });
   document.addEventListener('mouseover', show); document.addEventListener('focusin', show);
   document.addEventListener('mouseout', hide); document.addEventListener('focusout', hide);
 }

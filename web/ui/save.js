@@ -56,7 +56,7 @@ export function createSaving(app) {
     const body = { name: safeName(name), subfolder: safeName($('#subfolder').value || ''), overwrite: $('#overwrite').checked, targets: chosen(), data: b64(bytes) };
     return (await api('/api/save', body)).results;
   }
-  const chunkSize = () => Math.max(16, +$('#chunkSize').value | 0);
+  const chunkSize = () => Math.min(256, Math.max(16, +$('#chunkSize').value | 0));
   function updateHint() {
     const g = app.current, sf = safeName($('#subfolder').value), pre = sf ? sf + '/' : '', name = safeName(P().name);
     $('#chunkRow').classList.toggle('hidden', !g);
@@ -82,13 +82,17 @@ export function createSaving(app) {
     const name = safeName(P().name); download(await writeSchem(app.current, library), name + '.schem'); toast(`Downloaded ${name}.schem`, 'ok');
   };
   $('#save').onclick = async () => { await loadTargets(); $('#subfolder').value = LS.get('subfolder', 'studio'); updateHint(); $('#dlgSave').showModal(); };
+  $('#saveDownload').onclick = () => { $('#dlgSave').close(); $('#export').click(); };
   $('#subfolder').oninput = updateHint; $('#chunkSize').oninput = updateHint;
   $('#chunked').onchange = () => { $('#chunked').dataset.touched = 1; updateHint(); };
   $('#doSave').onclick = async e => {
     e.preventDefault();
+    const button = e.currentTarget;
     LS.set('targets', chosen()); LS.set('subfolder', $('#subfolder').value);
-    if (!chosen().length) return toast('Pick at least one folder', 'err');
-    const g = app.current, parts = $('#chunked').checked ? chunks(g, chunkSize(), P().name) : [{ g, off: [0, 0, -g.D], name: P().name }];
+    if (!chosen().length) return toast('Pick at least one folder, or use Download .schem', 'err');
+    const g = app.current; if (!g) return toast('The design is still being built — try again in a moment', 'err');
+    const parts = $('#chunked').checked ? chunks(g, chunkSize(), P().name) : [{ g, off: [0, 0, -g.D], name: P().name }];
+    button.disabled = true;                                                   // one save at a time: a double click must not race itself
     try {
       let ok = 0; const bad = [];
       for (const c of parts) {
@@ -99,22 +103,31 @@ export function createSaving(app) {
       const what = parts.length > 1 ? `${parts.length} chunks` : `${safeName(P().name)}.schem`;
       toast(bad.length ? `Saved ${ok}/${parts.length}, failed: ${bad[0].error}` : `Saved ${what}`, bad.length ? 'err' : 'ok');
     } catch (err) { toast('Save failed: ' + err.message, 'err'); }
+    finally { button.disabled = false; }
   };
 
-  // batch export: variants of the current design, generated in the background one at a time
+  // batch export: variants of the current design, generated in the background one at a time (closing the dialog stops it)
+  let batchRun = 0;
   $('#batch').onclick = async () => { await loadTargets(); $('#bSeed').value = P().seed; $('#bBar').style.width = '0'; $('#dlgBatch').showModal(); };
+  $('#dlgBatch').addEventListener('close', () => { batchRun++; });
   $('#doBatch').onclick = async e => {
     e.preventDefault();
-    const n = Math.max(1, Math.min(100, +$('#bCount').value)), s0 = +$('#bSeed').value, pat = $('#bPattern').value || '{name}_{n}';
+    const button = e.currentTarget;
+    const n = Math.max(1, Math.min(100, +$('#bCount').value | 0)), s0 = (+$('#bSeed').value | 0) || 1, pat = $('#bPattern').value || '{name}_{n}';
     if (!chosen().length) return toast('Choose folders in “Save to Minecraft” first', 'err');
-    let ok = 0;
-    for (let i = 0; i < n; i++) {
+    const run = ++batchRun; let ok = 0, done = 0, error = '';
+    button.disabled = true; $('#bBar').style.width = '0';
+    for (let i = 0; i < n && run === batchRun; i++) {
       const q = { ...app.store.P, seed: s0 + i }; if ($('#bNumbers').checked) q.numberText = String(i + 1);
-      const name = pat.replace('{name}', P().name).replace('{n}', i + 1).replace('{seed}', s0 + i);
-      try { const { design } = await app.engine.design(q); if ((await saveBytes(await writeSchem(design, library), name)).every(x => x.ok)) ok++; }
-      catch (err) { toast(err.message, 'err'); break; }
-      $('#bBar').style.width = ((i + 1) / n * 100) + '%';
+      const name = pat.replaceAll('{name}', P().name).replaceAll('{n}', String(i + 1)).replaceAll('{seed}', String(s0 + i));
+      try {
+        const { design } = await app.engine.design(q), res = await saveBytes(await writeSchem(design, library), name);
+        if (res.every(x => x.ok)) ok++; else error ||= res.find(x => !x.ok).error;
+      } catch (err) { error = err.message; break; }
+      done++; $('#bBar').style.width = ((i + 1) / n * 100) + '%';
     }
-    toast(`Batch done: ${ok}/${n} saved`, ok === n ? 'ok' : 'err');
+    button.disabled = false;
+    const stopped = done < n && !error ? ' (stopped)' : '';
+    toast(`Batch: ${ok}/${n} saved${stopped}${error ? ` — ${error}` : ''}`, ok === n ? 'ok' : 'err');
   };
 }

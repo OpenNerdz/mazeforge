@@ -14,10 +14,10 @@ export function createDetails(app) {
     const sf = safeName(LS.get('subfolder', 'studio')), load = `//schem load ${sf ? sf + '/' : ''}${safeName(P.name)}`;
     const time = ms < 1000 ? ms.toFixed(0) + ' ms' : (ms / 1000).toFixed(1) + ' s', list = all ? rows : rows.slice(0, 8);
     const pct = n => { const v = n / total * 100; return v >= 1 ? v.toFixed(0) + '%' : '<1%'; };
-    const copy = cmd => `<div class="cmd"><code>${cmd}</code><button class="btn icon quiet" data-copy="${cmd}" data-tip="Copy"><svg class="i"><use href="#i-copy"/></svg></button></div>`;
+    const copy = cmd => `<div class="cmd"><code>${esc(cmd)}</code><button class="btn icon quiet" data-copy="${esc(cmd)}" data-tip="Copy" aria-label="Copy ${esc(cmd)}"><svg class="i"><use href="#i-copy"/></svg></button></div>`;
     el.classList.toggle('min', !open);
-    el.innerHTML = `<button class="st-head" id="statsToggle"><b>${g.W} × ${g.H} × ${g.D}</b><span>${total.toLocaleString()} blocks</span><svg class="i"><use href="#i-chev"/></svg></button>
-      <div class="st-body">
+    el.innerHTML = `<button class="st-head" id="statsToggle" aria-expanded="${open}" aria-controls="statsBody"><b>${g.W} × ${g.H} × ${g.D}</b><span>${total.toLocaleString()} blocks</span><svg class="i"><use href="#i-chev"/></svg></button>
+      <div class="st-body" id="statsBody">
         <p class="st-meta">${rows.length} block types${g.faces ? ` · ${g.faces} faces` : ''}${ms ? ` · built in ${time}` : ''}</p>
         ${app.viewing ? '' : `<div class="st-paste"><p>Stand on the <b>paste spot</b>, face north, then:</p>${copy(load)}${copy('//paste -a')}</div>`}
         <div class="st-sub"><span>Blocks</span><button class="linkbtn" id="copyBom" data-tip="Copy the list with stack counts, for a survival build">Copy list</button></div>

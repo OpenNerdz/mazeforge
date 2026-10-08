@@ -35,7 +35,10 @@ const app = {
   sync: () => panel.sync(),
   changed() { app.store.commit(); app.sync(); app.regenerate(); },
   load(P) { app.store.replace(adaptPalette(P, app.library)); app.sync(); app.regenerate(); },
-  updateUndo() { $('#undo').disabled = !app.store.canUndo; $('#redo').disabled = !app.store.canRedo; },
+  updateUndo() {
+    $('#undo').disabled = $('#undoMenu').disabled = !app.store.canUndo;
+    $('#redo').disabled = $('#redoMenu').disabled = !app.store.canRedo;
+  },
   // show only one block type in 3D (null = everything)
   async isolate(block) {
     app.isolated = block;
@@ -58,7 +61,9 @@ await app.engine.ready;
 await new Promise(r => setTimeout(r));
 const [library, atlas] = await assets;
 app.library = library;
+const saved = JSON.stringify(app.store.P);
 adaptPalette(app.store.P, library);
+const adapted = JSON.stringify(app.store.P) !== saved;                 // blocks this game version lacks were swapped out
 app.viewer = viewer = new Viewer($('#view'), atlas, tileCount(library));
 
 function showScene({ design, origin, counts, mesh, ms }) {
@@ -67,6 +72,7 @@ function showScene({ design, origin, counts, mesh, ms }) {
   const piece = app.store.P.piece, corner = piece === 'corner', sameKind = lastPiece === piece;
   lastPiece = piece;
   viewer.isoDir = corner ? [0.8, 0.5, 0.9] : null;                     // corners: look at the outer (south + east) faces
+  $('#tiles').disabled = piece !== 'straight';                           // only straight walls are tiled
   marker = [origin[0], origin[1] + design.D];
   viewer.show(mesh, { keepCamera: !firstShow && sameKind, marker }); firstShow = false;
   if (app.isolated && !counts.some(([k]) => k === app.isolated)) app.isolate(null);
@@ -101,7 +107,7 @@ createDesktop();
 installTooltips();
 installFitBars($('#stats'));
 app.sync();
-app.regenerate();
+if (adapted && !location.hash.includes('MSS1.')) app.regenerate();    // otherwise the first request already has these settings
 ready();
 $('#startup').remove();
 await loadLink();

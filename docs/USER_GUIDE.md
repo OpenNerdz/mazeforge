@@ -21,6 +21,10 @@ controls. Settings and custom presets are remembered in your browser.
 | B | Seed browser | P | Screenshot |
 | C | Clean UI | 1–6 | Camera views |
 | ? | Shortcuts | Ctrl+Z / Ctrl+Shift+Z | Undo / redo |
+| Esc | Close a dialog, menu or picker | | |
+
+Every control can be reached with Tab. In the block picker, type to search and press Enter for the first
+match, or use the arrow keys. On a phone, New seed, Undo and Redo are in the **More** menu.
 
 Share links point to the local app address: the recipient must start their own copy
 of MazeForge before opening the link. Existing `MSS1` share codes and saved
