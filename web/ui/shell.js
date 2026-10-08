@@ -4,9 +4,7 @@ import { PRESETS } from '../core/settings.js';
 import { LAYOUT_NAMES } from '../core/layouts.js';
 import { Rng } from '../core/random.js';
 import { withDefaults } from './state.js';
-import { $, $$, LS, toast, safeName, fitBars, esc } from './dom.js';
-
-const randSeed = () => (Math.random() * 1e6) | 0;
+import { $, $$, LS, toast, safeName, fitBars, esc, randSeed } from './dom.js';
 
 export function createShell(app, panel) {
   const { viewer } = app, P = () => app.store.P;

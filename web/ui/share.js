@@ -7,12 +7,12 @@ const b64url = u8 => btoa(String.fromCharCode(...u8)).replace(/\+/g, '-').replac
 const unb64url = s => Uint8Array.from(atob(s.replace(/-/g, '+').replace(/_/g, '/')), c => c.charCodeAt(0));
 const pipe = async (bytes, stream) => new Uint8Array(await new Response(new Blob([bytes]).stream().pipeThrough(stream)).arrayBuffer());
 
-export async function shareCode(P) {
+async function shareCode(P) {
   const diff = {};
   for (const k in P) if (JSON.stringify(P[k]) !== JSON.stringify(DEFAULTS[k])) diff[k] = P[k];
   return 'MSS1.' + b64url(await pipe(new TextEncoder().encode(JSON.stringify(diff)), new CompressionStream('deflate-raw')));
 }
-export async function readCode(code) {
+async function readCode(code) {
   const m = /MSS1\.([A-Za-z0-9_-]+)/.exec(code || ''); if (!m) throw new Error('not a share code');
   return withDefaults(JSON.parse(new TextDecoder().decode(await pipe(unb64url(m[1]), new DecompressionStream('deflate-raw')))));
 }

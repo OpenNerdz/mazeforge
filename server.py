@@ -451,8 +451,8 @@ class Handler(SimpleHTTPRequestHandler):
                 return self._json(400, {'error': f'folder not found: {p}'})
             before = {t['path'] for t in find_targets()}
             save_custom(paths + [str(p.resolve())])
-            added = [t['path'] for t in find_targets() if t['path'] not in before]
-            return self._json(200, {'targets': find_targets(), 'added': added})
+            targets = find_targets()
+            return self._json(200, {'targets': targets, 'added': [t['path'] for t in targets if t['path'] not in before]})
         if req.get('remove'):
             save_custom([c for c in paths if c != req['remove']])
         return self._json(200, {'targets': find_targets()})

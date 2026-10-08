@@ -6,6 +6,15 @@ export const $ = (s, root = document) => root.querySelector(s);
 export const $$ = (s, root = document) => root.querySelectorAll(s);
 export const esc = t => String(t).replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;');
 export const safeName = s => (s || 'wall').replace(/[^A-Za-z0-9_-]+/g, '_').replace(/^_+|_+$/g, '').slice(0, 60) || 'wall';
+export const randSeed = () => (Math.random() * 1e6) | 0;
+// bytes -> base64, in slices: one String.fromCharCode call per byte would overflow the call stack on big files
+export const b64 = bytes => { let s = ''; for (let i = 0; i < bytes.length; i += 0x8000) s += String.fromCharCode.apply(null, bytes.subarray(i, i + 0x8000)); return btoa(s); };
+
+// a JSON request to the local server; its { error } becomes the thrown message
+export async function api(path, body) {
+  const r = await fetch(path, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+  const j = await r.json(); if (!r.ok) throw new Error(j.error || r.statusText); return j;
+}
 
 // per-viewer preferences in localStorage (silently unavailable in private windows)
 export const LS = {
@@ -14,7 +23,7 @@ export const LS = {
 };
 
 // popovers sit in the top layer: re-showing one moves it above anything opened since, such as a modal dialog
-export function raise(el) {
+function raise(el) {
   if (!el.showPopover) return;                                          // no popover support: a plain fixed element
   if (el.matches(':popover-open')) el.hidePopover();
   el.showPopover();

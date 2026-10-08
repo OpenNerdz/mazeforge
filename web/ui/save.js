@@ -1,12 +1,6 @@
 // Saving: Download, the Save to Minecraft dialog (folders found by the local server), chunked saves and batch export.
 import { writeSchem } from '../core/schem.js';
-import { $, $$, esc, LS, toast, safeName, download } from './dom.js';
-
-const b64 = bytes => { let s = ''; for (let i = 0; i < bytes.length; i += 0x8000) s += String.fromCharCode.apply(null, bytes.subarray(i, i + 0x8000)); return btoa(s); };
-async function api(path, body) {
-  const r = await fetch(path, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
-  const j = await r.json(); if (!r.ok) throw new Error(j.error || r.statusText); return j;
-}
+import { $, $$, esc, LS, toast, safeName, download, b64, api } from './dom.js';
 
 // file names are cut at 60 characters: leave room for the "_r12c12" suffix, or long names' chunks would collide
 const chunkBase = name => safeName(name).slice(0, 52);

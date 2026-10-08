@@ -1,5 +1,5 @@
 import { importTextures } from '../core/texture-import.js';
-import { $, toast } from './dom.js';
+import { $, toast, b64, api } from './dom.js';
 
 export function createTextureImport(app) {
   $('#textures').onclick = () => $('#dlgTextures').showModal();
@@ -13,12 +13,8 @@ export function createTextureImport(app) {
       status.textContent = 'Reading the selected archive…';
       const result = await importTextures(await file.arrayBuffer(), app.library,
         n => { status.textContent = `Importing textures… ${Math.round(n * 100)}%`; });
-      const bytes = new Uint8Array(await result.atlas.arrayBuffer());
-      let binary = '';
-      for (let i = 0; i < bytes.length; i += 0x8000) binary += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
-      const response = await fetch('/api/textures', { method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ library: result.library, atlas: btoa(binary), metadata: result.metadata }) });
-      if (!response.ok) throw new Error((await response.json()).error || 'Could not save the local textures.');
+      const atlas = b64(new Uint8Array(await result.atlas.arrayBuffer()));
+      await api('/api/textures', { library: result.library, atlas, metadata: result.metadata });
       status.textContent = `Imported Minecraft ${result.metadata.version}. Reloading your workspace…`;
       location.reload();
     } catch (err) { status.textContent = err.message; toast('Texture import failed: ' + err.message, 'err'); }
@@ -26,9 +22,8 @@ export function createTextureImport(app) {
   };
   $('#resetTextures').onclick = async () => {
     try {
-      const response = await fetch('/api/textures', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ reset: true }) });
-      if (!response.ok) throw new Error('Could not reset local textures.');
+      await api('/api/textures', { reset: true });
       location.reload();
-    } catch (err) { toast(err.message, 'err'); }
+    } catch (err) { toast('Could not reset local textures: ' + err.message, 'err'); }
   };
 }

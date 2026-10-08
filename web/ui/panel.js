@@ -1,13 +1,12 @@
 // The settings panel: sections of controls built from the schema, tabs, search, simple / advanced / clean.
 import { DEFAULTS } from '../core/settings.js';
 import { SCHEMA } from './schema.js';
-import { $, $$, esc, LS } from './dom.js';
+import { $, $$, esc, LS, randSeed } from './dom.js';
 import { createPaletteEditor } from './palette-editor.js';
 import { createFaces } from './faces.js';
 
 const PAIRS = [['heightMin', 'heightMax'], ['tierMin', 'tierMax'], ['finHeightMin', 'finHeightMax'], ['finGapMin', 'finGapMax'], ['grilleMin', 'grilleMax']];
 const PALETTE_KEYS = ['autoPalette', 'autoRoles', 'autoContrast', 'autoSpread', 'autoSatMax', 'roleLock', 'autoBlocks'];
-const randSeed = () => (Math.random() * 1e6) | 0;
 
 export function createPanel(app) {
   const ctls = new Map(), itemOf = new WeakMap(), defOf = new WeakMap(); // key -> {paint}; control -> schema item; section -> its schema

@@ -1,4 +1,4 @@
-import { $, toast } from './dom.js';
+import { $, toast, api } from './dom.js';
 
 export async function createDesktop() {
   try {
@@ -8,14 +8,13 @@ export async function createDesktop() {
     button.classList.remove('hidden');
     button.onclick = async () => {
       try {
-        const result = await fetch('/api/quit', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' });
-        if (!result.ok) throw new Error('Could not quit MazeForge.');
+        await api('/api/quit', {});
         document.body.replaceChildren();
         const message = document.createElement('p');
         message.style.cssText = 'margin:48px;text-align:center';
         message.textContent = 'MazeForge is closed. You can close this tab. Double-click the app to start again.';
         document.body.append(message);
-      } catch (err) { toast(err.message, 'err'); }
+      } catch { toast('Could not quit MazeForge.', 'err'); }
     };
   } catch { /* The source and static versions do not need desktop controls. */ }
 }
