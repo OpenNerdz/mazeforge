@@ -6,7 +6,7 @@ import { createHash } from 'node:crypto';
 import fs from 'node:fs';
 import { generate } from '../web/core/generate.js';
 import { DEFAULTS, PRESETS } from '../web/core/settings.js';
-import { PIECES } from '../web/core/pieces.js';
+import { PIECES, pieceMask } from '../web/core/pieces.js';
 import { effectivePalette } from '../web/core/palette.js';
 import { writeSchem, readSchem, stateString } from '../web/core/schem.js';
 import { zipReader } from '../web/core/texture-import.js';
@@ -84,6 +84,27 @@ for (const piece of Object.keys(PIECES)) for (const layout of ['stacked', 'tower
   const P = params({ piece: 'corner', seed: 1 }), g = generate(P), { W, H, D, data, keys } = g, T = P.thickness;
   let nw = 0; for (let y = 0; y < H; y++) for (let z = 0; z < D - T; z++) for (let x = 0; x < W - T; x++) { const v = data[(y * D + z) * W + x]; if (v && !soft(keys[v])) nw++; }
   check(nw === 0, `corner: ${nw} blocks in the inner quadrant`);
+}
+// faces meeting at corners and wall tips must not cut a slot right through a wall: a cross-section of a wall
+// (a footprint span no wider than the wall) all air, wall on both sides of it and wall above it
+for (const name of ['Corner piece', 'Overgrown corner', 'T-junction', 'Twin towers', 'Maze with Glade']) for (const seed of [1, 2, 3]) {
+  const P = params({ ...PRESETS[name], seed }), { W, H, D, data, keys } = generate(P), { mask } = pieceMask(P), T = P.piece === 'maze' ? P.mazeWall : P.thickness;
+  const solid = (x, y, z) => { const v = data[(y * D + z) * W + x]; return v && !soft(keys[v]); };
+  let slots = 0;
+  for (const along of [0, 1]) for (let c = 1; c < (along ? W : D) - 1; c++) for (let a = 0, n = along ? D : W; a < n;) {
+    const m = t => along ? mask[c * D + t] : mask[t * D + c], at = (cc, y, t) => along ? solid(cc, y, t) : solid(t, y, cc);
+    if (!m(a)) { a++; continue; }
+    let b = a; while (b < n && m(b)) b++;
+    if (b - a <= T + 2) for (let y = 4; y < H - 6; y++) {
+      let open = true, before = false, after = false, over = false;
+      for (let t = a; t < b && open; t++) open = !at(c, y, t);
+      if (!open) continue;
+      for (let t = a; t < b; t++) { before ||= at(c - 1, y, t); after ||= at(c + 1, y, t); for (let yy = y + 1; yy < H && !over; yy++) over = at(c, yy, t); }
+      if (before && after && over) slots++;
+    }
+    a = b;
+  }
+  check(!slots, `${name} s${seed}: ${slots} slot cells cut through a wall`);
 }
 
 // ---- every straight wall has a real front and back (not just end caps), and the layout actually matters

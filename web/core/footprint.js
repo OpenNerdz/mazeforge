@@ -65,10 +65,14 @@ export function buildFootprint(P, { W, D, mask }) {
   // a wall end: a short run capped between two faces that point in opposite directions (the tip of a wall)
   // When a face and its neighbour both look like ends (a wall about as wide as it is thick), the one closer
   // to the wall thickness is the end; on a tie the x-facing sides are, since straight walls run along x.
-  const nb = i => [runs[(i + runs.length - 1) % runs.length], runs[(i + 1) % runs.length]];
+  // neighbours go round each outline loop (a loop's runs are consecutive): the first and last run of a loop are
+  // next to each other, not to runs of the next loop
+  const first = [], size = [];
+  runs.forEach((r, i) => { if (!i || runs[i - 1].loop !== r.loop) first[r.loop] = i; size[r.loop] = (size[r.loop] || 0) + 1; });
+  const nb = i => { const s = first[runs[i].loop], n = size[runs[i].loop], p = i - s; return [runs[s + (p + n - 1) % n], runs[s + (p + 1) % n]]; };
   runs.forEach((r, i) => {
     const [prev, next] = nb(i);
-    r.cand = r.cells.length <= T + 2 && prev.loop === r.loop && next.loop === r.loop && (prev.d + 2) % 4 === next.d;
+    r.cand = r.cells.length <= T + 2 && (prev.d + 2) % 4 === next.d;
     r.endScore = Math.abs(r.cells.length - T) + (r.d % 2 ? 0 : 0.5);
   });
   runs.forEach((r, i) => { r.isEnd = r.cand && nb(i).every(q => !q.cand || r.endScore <= q.endScore); });
@@ -93,9 +97,8 @@ export function buildFootprint(P, { W, D, mask }) {
   });
   runs.forEach((r, i) => {                                                      // wall ends follow a neighbour's tiers
     if (!isEnd(r)) return;
-    const prev = runs[(i + runs.length - 1) % runs.length], next = runs[(i + 1) % runs.length];
-    const nb = prev.skin ? [prev.skin, prev.cells.length - 1] : next.skin ? [next.skin, 0] : null;
-    r.skin = nb ? endSkin(nb[0], nb[1], H, r.cells.length, P, i) : buildSkin(r.cells.length, H, P.seed + i, P, 'stacked', featBundle(P, 'back', 0));
+    const [prev, next] = nb(i), from = prev.skin ? [prev.skin, prev.cells.length - 1] : next.skin ? [next.skin, 0] : null;
+    r.skin = from ? endSkin(from[0], from[1], H, r.cells.length, P, i) : buildSkin(r.cells.length, H, P.seed + i, P, 'stacked', featBundle(P, 'back', 0));
     r.end = true;
   });
   // --- every mask column belongs to its nearest face: `owner` picks the material (ends included),
@@ -121,23 +124,28 @@ export function buildFootprint(P, { W, D, mask }) {
     const F = runs[shaper[k]].skin.F, u = shapeU[k] * H;
     for (let y = 0, i = at(x, 0, z); y < H; y++, i += W * D) if (F[u + y] < NONE) occ[i] = 1;
   }
-  // --- ...then relief is carved in from every face (the primary first), keeping `core` solid blocks behind
+  // --- ...then relief is carved in from every face (the primary first), keeping `core` solid blocks behind.
+  // The core behind each recess is kept for good: a face carved later may not cut it away from the side, or two
+  // faces meeting at a corner or wall tip would open a slot right through the wall and strand a thin plate.
   const endRelief = P.endDetail && !P.seamMatch ? Math.max(0, P.endRelief ?? 2) : 0;   // matched seams: ends are hidden, keep them flat
   const order = runs.map((_, i) => i).sort((a, b) => Number(a !== primary) - Number(b !== primary) || Number(!!runs[a].end) - Number(!!runs[b].end));
+  const kept = new Uint8Array(W * H * D);
   for (const ri of order) {
     const r = runs[ri], [nx, nz] = N4[r.d], F = r.skin.F;
     r.cells.forEach(([x, z], u) => {
       for (let y = 0; y < H; y++) {
         let f = F[u * H + y]; if (f >= NONE) continue;
         if (r.end) f = Math.min(f, endRelief);
-        for (let k = 0; k < f; k++) {
+        let k = 0;
+        for (; k < f; k++) {
           const cx = x - nx * k, cz = z - nz * k;
-          if (cx < 0 || cz < 0 || cx >= W || cz >= D || !mask[cx * D + cz]) break;
+          if (cx < 0 || cz < 0 || cx >= W || cz >= D || !mask[cx * D + cz] || kept[at(cx, y, cz)]) break;
           let behind = 0;
           for (let j = 1; j <= core; j++) { const bx = cx - nx * j, bz = cz - nz * j; if (bx >= 0 && bz >= 0 && bx < W && bz < D && occ[at(bx, y, bz)]) behind++; else break; }
           if (behind < core) break;
           occ[at(cx, y, cz)] = 0;
         }
+        for (let j = k; k > 0 && j < k + core; j++) kept[at(x - nx * j, y, z - nz * j)] = 1;   // the core behind this recess
       }
     });
   }

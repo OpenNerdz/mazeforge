@@ -1,5 +1,15 @@
 # Changelog
 
+## Unreleased
+
+- Relief carved from two faces no longer cuts a slot right through a wall at corners, junctions and maze wall
+  tips, leaving a thin stranded plate: the solid core behind each recess is now kept.
+- Maze wall tips at the start or end of an outline are recognised as wall ends, so they follow their wall's
+  height and end detailing instead of standing up to 69 blocks above or below it.
+- **Designs change:** existing seeds and share codes now build slightly different walls, mostly at corners,
+  junctions and maze tips. A straight wall's shape changes only within four blocks of its ends, though its ivy
+  grows differently.
+
 ## 2.0.1-beta.2
 
 - Feature the current beta in GitHub’s Latest release slot and use a lasting download link.
