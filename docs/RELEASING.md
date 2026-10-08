@@ -46,3 +46,14 @@ version, and that all download links work. Leave older releases available.
 
 Published archives and tags identify a specific build: do not replace them with
 new code. Fixes should receive a new version, validated commit and release.
+
+## Publishing with the Release workflow
+
+The **Release** workflow performs steps 3–5 and the publishing steps above. Once
+Checks and Desktop builds pass for the commit that set the version, add the
+notes as `.github/release-notes/v<version>.md` (`{{COMMIT}}`, `{{CHECKS_RUN}}` and
+`{{DESKTOP_RUN}}` are filled in), then choose **Actions → Release → Run workflow**
+and enter the version. It refuses a version whose tag exists or whose builds have
+not passed, verifies every build's own checksum, tags that exact commit, checks
+the draft's six files against `SHA256SUMS.txt`, and publishes it as the Latest
+release. Release versions oldest first, so the newest ends up as Latest.
